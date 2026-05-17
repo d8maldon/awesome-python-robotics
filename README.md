@@ -1,0 +1,209 @@
+# Awesome Python Robotics [![Awesome](https://awesome.re/badge.svg)](https://awesome.re)
+
+A curated list of awesome libraries, frameworks, simulators, tutorials, and overall resources for the robotics community using **Python**. Inspired by and structured after [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) — same sections, Python ecosystem throughout.
+
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Contents
+
+- [**By Application Areas**](#by-application-areas)
+  - [Ground Vehicles and Mobile Robotics](#ground-vehicles-and-mobile-robotics)
+  - [Manipulation](#manipulation)
+  - [Legged Locomotion](#legged-locomotion)
+  - [Robot Modeling](#robot-modeling)
+  - [Perception](#perception)
+  - [Mapping, Localization and SLAM](#mapping-localization-and-slam)
+  - [Motion Planning and Path Planning](#motion-planning-and-path-planning)
+  - [Motion Control](#motion-control)
+  - [Unmanned Aerial Vehicles (UAV)](#unmanned-aerial-vehicles-uav)
+  - [Marine Robotics & AUV](#marine-robotics--auv)
+  - [Automated Driving](#automated-driving)
+- [**By Common Tools**](#by-common-tools)
+  - [Simulators](#simulators)
+  - [ROS and Middleware](#ros-and-middleware)
+  - [Hardware and Connectivity](#hardware-and-connectivity)
+- [**By Relevant Python Libraries**](#by-relevant-python-libraries)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+# By Application Areas
+
+## Ground Vehicles and Mobile Robotics
+
+- [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) — Python sample codes for robotics algorithms (mobile robots, planning, localization, SLAM).
+- [Nav2](https://github.com/ros-navigation/navigation2) — ROS 2 navigation stack for mobile robots with Python launch and behavior tree bindings.
+- [PyRoboSim](https://github.com/sea-bass/pyrobosim) — Python-based ROS 2 enabled 2D mobile robot simulator for prototyping high-level behaviors.
+- [TurtleBot3 Python examples](https://github.com/ROBOTIS-GIT/turtlebot3) — Reference Python nodes for the TurtleBot3 mobile robot platform.
+- [Webots Python API](https://github.com/cyberbotics/webots) — Mobile robot simulation with full Python controller bindings.
+- [Crazyswarm](https://github.com/USC-ACTLab/crazyswarm) — Python toolkit for controlling fleets of Crazyflie ground/aerial robots.
+- [PyBullet differential drive examples](https://github.com/bulletphysics/bullet3) — Reference mobile-robot examples shipped with PyBullet.
+- [Husky / Jackal ROS Python interfaces](https://github.com/husky/husky) — Clearpath Robotics Python interfaces for Husky and Jackal UGVs.
+- Mapping, Localization, and SLAM (*See Section Below*)
+- Motion Planning and Path Planning (*See Section Below*)
+- [PettingZoo](https://github.com/Farama-Foundation/PettingZoo) — Multi-agent RL environments useful for robot swarm research.
+
+## Manipulation
+
+- [Robotics Toolbox for Python](https://github.com/petercorke/robotics-toolbox-python) — Peter Corke's full-featured manipulator kinematics, dynamics, and control toolbox.
+- [MoveIt 2 Python bindings (`moveit_py`)](https://github.com/moveit/moveit2) — Python interface to the MoveIt motion-planning framework.
+- [ikpy](https://github.com/Phylliade/ikpy) — Pure-Python inverse kinematics library supporting URDF chains.
+- [kinpy](https://github.com/neka-nat/kinpy) — Forward kinematics in Python from URDF/MJCF/SDF descriptions.
+- [Pinocchio (Python bindings)](https://github.com/stack-of-tasks/pinocchio) — Fast rigid-body dynamics with Python API; used heavily for manipulator IK/ID.
+- [TRAC-IK Python](https://bitbucket.org/traclabs/trac_ik) — Real-time inverse kinematics solver with Python wrappers.
+- [robosuite](https://github.com/ARISE-Initiative/robosuite) — MuJoCo-based simulation framework for manipulation research.
+- [robomimic](https://github.com/ARISE-Initiative/robomimic) — Imitation-learning datasets, environments, and algorithms for manipulators.
+- [PyBullet pick-and-place examples](https://github.com/google-research/ravens) — Ravens benchmarks: Transporter-style pick-and-place in PyBullet.
+
+## Legged Locomotion
+
+- [legged_gym](https://github.com/leggedrobotics/legged_gym) — Isaac Gym environments for training quadruped locomotion policies.
+- [Walk-These-Ways](https://github.com/Improbable-AI/walk-these-ways) — Multiplicity of behaviors training pipeline for Unitree Go1.
+- [Unitree SDK (Python)](https://github.com/unitreerobotics/unitree_sdk2_python) — Official Python SDK for Unitree quadrupeds (Go2, B2, H1).
+- [quad-sdk](https://github.com/robomechanics/quad-sdk) — Open quadruped control stack with Python utilities.
+- [Brax](https://github.com/google/brax) — Differentiable physics engine in JAX for fast legged-robot policy training.
+- [Cassie MuJoCo Sim](https://github.com/osudrl/cassie-mujoco-sim) — MuJoCo simulation of Agility Robotics' Cassie biped with Python API.
+
+## Robot Modeling
+
+- [urdfpy / urchin](https://github.com/fishbotics/urchin) — Parse, visualize, and manipulate URDF files in Python.
+- [yourdfpy](https://github.com/clemense/yourdfpy) — Modern Python URDF parser with mesh handling.
+- [Drake (Python bindings)](https://github.com/RobotLocomotion/drake) — Toyota Research Institute's planning/control/simulation toolbox with full `pydrake` API.
+- [MuJoCo (Python bindings)](https://github.com/google-deepmind/mujoco) — DeepMind's general-purpose physics simulator with first-class Python support.
+- [PyBullet](https://github.com/bulletphysics/bullet3) — Real-time physics simulation with URDF / SDF / MJCF import.
+
+## Perception
+
+- [OpenCV-Python](https://github.com/opencv/opencv-python) — Computer vision primitives, feature detection, calibration, tracking.
+- [Open3D](https://github.com/isl-org/Open3D) — Modern 3D data processing: point clouds, meshes, RGB-D, registration.
+- [PyTorch3D](https://github.com/facebookresearch/pytorch3d) — Differentiable 3D vision library from Meta AI.
+- [MMDetection3D](https://github.com/open-mmlab/mmdetection3d) — OpenMMLab toolbox for 3D object detection from point clouds and images.
+- [Detectron2](https://github.com/facebookresearch/detectron2) — Meta AI's object detection / segmentation platform.
+- [DepthAI Python](https://github.com/luxonis/depthai-python) — Luxonis OAK stereo + neural-inference camera Python API.
+- [pyrealsense2](https://github.com/IntelRealSense/librealsense) — Intel RealSense depth-camera Python bindings.
+- [filterpy](https://github.com/rlabbe/filterpy) — Kalman and Bayesian filters used widely for inertial sensor fusion.
+
+## Mapping, Localization and SLAM
+
+- [pySLAM](https://github.com/luigifreda/pyslam) — Monocular Visual SLAM framework in Python.
+- [ORB-SLAM3 Python bindings](https://github.com/UZ-SLAMLab/ORB_SLAM3) — Reference visual-inertial SLAM with community Python wrappers.
+- [GTSAM (Python wrappers)](https://github.com/borglab/gtsam) — Factor-graph optimization library widely used for SLAM back-ends.
+- [PyPose](https://github.com/pypose/pypose) — PyTorch-based library for robot learning with SLAM/pose-graph primitives.
+- [Nav2 AMCL](https://github.com/ros-navigation/navigation2) — Adaptive Monte Carlo Localization in ROS 2, callable from Python nodes.
+- [g2o-python](https://github.com/miquelmassot/g2o-python) — Python bindings for the g2o graph optimizer used in many SLAM back-ends.
+
+## Motion Planning and Path Planning
+
+- [OMPL Python bindings](https://github.com/ompl/ompl) — The Open Motion Planning Library with full Python API (RRT, PRM, KPIECE, etc.).
+- [PythonRobotics — Path Planning](https://github.com/AtsushiSakai/PythonRobotics#path-planning) — RRT, RRT*, A*, Dijkstra, Hybrid A*, state lattice, model predictive trajectory.
+- [MoveIt 2 motion planners](https://github.com/moveit/moveit2) — Manipulator planning (OMPL, CHOMP, STOMP, Pilz) with Python interfaces.
+- [pyastar2d](https://github.com/hjweide/pyastar2d) — Fast A* search on 2D grids using a C backend with a Python interface.
+- [Dubins-curves](https://github.com/AndrewWalker/pydubins) — Dubins path computation for car-like vehicles.
+- [networkx](https://github.com/networkx/networkx) — Graph algorithms used for roadmap construction and graph search.
+- [trajopt](https://github.com/personalrobotics/aikido) — Trajectory optimization tooling (within the AIKIDO framework) for manipulation.
+
+## Motion Control
+
+- [python-control](https://github.com/python-control/python-control) — The Python Control Systems Library: state-space, LQR, MPC primitives, PID.
+- [do-mpc](https://github.com/do-mpc/do-mpc) — Model predictive control and moving horizon estimation toolbox.
+- [CasADi](https://github.com/casadi/casadi) — Symbolic framework for nonlinear optimization and optimal control.
+- [simple-pid](https://github.com/m-lundberg/simple-pid) — A minimal PID controller for embedded and prototyping use.
+- [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) — RL algorithms (DDPG, SAC, PPO) commonly used for learned motion control.
+
+## Unmanned Aerial Vehicles (UAV)
+
+- [pymavlink](https://github.com/ArduPilot/pymavlink) — Python MAVLink protocol implementation for PX4/ArduPilot.
+- [DroneKit-Python](https://github.com/dronekit/dronekit-python) — High-level Python API for MAVLink-compatible autopilots.
+- [MAVSDK-Python](https://github.com/mavlink/MAVSDK-Python) — Modern asyncio Python bindings to MAVSDK for PX4.
+- [gym-pybullet-drones](https://github.com/utiasDSL/gym-pybullet-drones) — Quadrotor simulation and RL environment in PyBullet.
+- [crazyflie-lib-python](https://github.com/bitcraze/crazyflie-lib-python) — Official Python library for the Bitcraze Crazyflie nano-quad.
+- [AirSim Python API](https://github.com/microsoft/AirSim) — Microsoft AirSim drone & car simulator with Python client.
+- [Olympe (Parrot)](https://github.com/Parrot-Developers/olympe) — Parrot's Python controller framework for ANAFI and SPHINX simulator.
+
+## Marine Robotics & AUV
+
+- [HoloOcean](https://github.com/byu-pccl/holoocean) — Underwater robotics simulator built on Unreal Engine with Python API.
+- [UUV Simulator](https://github.com/uuvsimulator/uuv_simulator) — Gazebo-based underwater vehicle simulation (Python ROS interfaces).
+- [stonefish + stonefish_ros](https://github.com/patrykcieslak/stonefish) — Marine robotics simulator with Python ROS bindings.
+- [BlueROV2 (mavlink-router + pymavlink)](https://github.com/bluerobotics/BlueOS) — BlueRobotics BlueROV2 ecosystem with Python tooling.
+- [orca4](https://github.com/clydemcqueen/orca4) — Autonomous Underwater Vehicle stack on top of ROS 2 + ArduSub.
+- [gym-auv](https://github.com/simentha/gym-auv) — OpenAI Gym environment for AUV path-following with RL.
+- [usv_sim](https://github.com/disaster-robotics-proalertas/usv_sim_lsa) — Unmanned Surface Vehicle simulator for autonomous boats.
+
+## Automated Driving
+
+- [CARLA](https://github.com/carla-simulator/carla) — Open-source self-driving simulator with full Python API.
+- [openpilot](https://github.com/commaai/openpilot) — comma.ai's open-source driver-assistance system; Python-heavy stack.
+- [Autoware Python utilities](https://github.com/autowarefoundation/autoware) — Open-source autonomous driving stack with Python tooling and ROS 2 nodes.
+- [Apollo](https://github.com/ApolloAuto/apollo) — Baidu's open autonomous driving platform; Python bindings for perception and planning.
+- [nuScenes devkit](https://github.com/nutonomy/nuscenes-devkit) — Python devkit for the nuScenes autonomous-driving dataset.
+- [MetaDrive](https://github.com/metadriverse/metadrive) — Lightweight, configurable driving simulator for RL.
+- [highway-env](https://github.com/Farama-Foundation/HighwayEnv) — Collection of environments for highway / intersection decision-making research.
+
+---
+
+# By Common Tools
+
+## Simulators
+
+- **ROS-based simulators** (*See Section Below*)
+- [PyBullet](https://github.com/bulletphysics/bullet3) — Real-time physics simulator (URDF/SDF/MJCF) with first-class Python.
+- [MuJoCo](https://github.com/google-deepmind/mujoco) — DeepMind physics engine with native Python bindings.
+- [Webots](https://github.com/cyberbotics/webots) — Mature open-source robotics simulator with Python controllers.
+- [NVIDIA Isaac Lab](https://github.com/isaac-sim/IsaacLab) — GPU-accelerated robot learning framework built on Isaac Sim.
+- [Gazebo / gz-python](https://github.com/gazebosim/gz-sim) — Modern Gazebo (formerly Ignition) with Python bindings.
+
+## ROS and Middleware
+
+- [rclpy](https://github.com/ros2/rclpy) — Official Python client library for ROS 2.
+- [rospy](https://github.com/ros/ros_comm) — Python client library for ROS 1 (Noetic and earlier).
+- [roslibpy](https://github.com/gramaziokohler/roslibpy) — Pure-Python ROS bridge via WebSocket (works with ROS 1 & 2).
+- [ros2cli](https://github.com/ros2/ros2cli) — Python implementation of the `ros2` command-line tools.
+- [Micro-ROS Python tooling](https://github.com/micro-ROS/micro_ros_setup) — Micro-ROS scaffolding scripts in Python for MCU targets.
+- [ros2_control](https://github.com/ros-controls/ros2_control) — Real-time control framework usable from Python via `controller_manager`.
+
+## Hardware and Connectivity
+
+- Any robot running **ROS** (See ROS Section)
+- [pyserial](https://github.com/pyserial/pyserial) — Serial communication with Arduino-class microcontrollers and sensors.
+- [gpiozero](https://github.com/gpiozero/gpiozero) — Simple GPIO interface for Raspberry Pi.
+- [Adafruit Blinka](https://github.com/adafruit/Adafruit_Blinka) — CircuitPython compatibility layer for SBCs like Raspberry Pi and BeagleBone.
+- [Dynamixel SDK (Python)](https://github.com/ROBOTIS-GIT/DynamixelSDK) — ROBOTIS Dynamixel servo SDK with Python bindings.
+- [pyrealsense2](https://github.com/IntelRealSense/librealsense) — Intel RealSense depth-camera Python bindings.
+- [DepthAI Python](https://github.com/luxonis/depthai-python) — Luxonis OAK cameras (RGB + stereo + on-device NN).
+- [Kinova Kortex API](https://github.com/Kinovarobotics/kortex) — Python API for Kinova Gen3 manipulators.
+- [ur_rtde](https://gitlab.com/sdurobotics/ur_rtde) — Real-Time Data Exchange C++/Python interface for Universal Robots.
+- [pybricks-micropython](https://github.com/pybricks/pybricks-micropython) — Python (MicroPython) for LEGO Mindstorms / SPIKE Prime.
+- [Adafruit_Python_BBIO](https://github.com/adafruit/adafruit-beaglebone-io-python) — Python I/O library for the BeagleBone family.
+
+---
+
+# By Relevant Python Libraries
+
+- [PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) — Reference implementations of classic robotics algorithms.
+- [Robotics Toolbox for Python](https://github.com/petercorke/robotics-toolbox-python) — Peter Corke's manipulator + mobile robot toolbox.
+- [ROS 2 / rclpy](https://github.com/ros2/rclpy) — Python client library for ROS 2.
+- [Drake (`pydrake`)](https://github.com/RobotLocomotion/drake) — Planning, control, and analysis from TRI.
+- [Pinocchio](https://github.com/stack-of-tasks/pinocchio) — Fast rigid-body dynamics algorithms.
+- [MuJoCo](https://github.com/google-deepmind/mujoco) — DeepMind's physics engine.
+- [PyBullet](https://github.com/bulletphysics/bullet3) — Real-time physics simulation.
+- [Open3D](https://github.com/isl-org/Open3D) — 3D data processing and visualization.
+- [OpenCV-Python](https://github.com/opencv/opencv-python) — Computer vision primitives.
+- [PyTorch](https://github.com/pytorch/pytorch) — Deep-learning framework used across modern perception and policy work.
+- [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) — Reliable PyTorch implementations of RL algorithms.
+- [python-control](https://github.com/python-control/python-control) — Python Control Systems Library.
+- [CasADi](https://github.com/casadi/casadi) — Symbolic framework for nonlinear optimization & optimal control.
+- [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) — Maintained successor to OpenAI Gym for RL environments.
+
+---
+
+## Contributing
+
+Pull requests welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Add new entries in alphabetical order within their section, link to the canonical project page, and keep descriptions under one line.
+
+## License
+
+[![CC0](https://licensebuttons.net/p/zero/1.0/88x31.png)](https://creativecommons.org/publicdomain/zero/1.0/)
+
+To the extent possible under law, this list is released into the public domain under [CC0 1.0](LICENSE).
