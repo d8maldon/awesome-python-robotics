@@ -52,6 +52,9 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [kinpy](https://github.com/neka-nat/kinpy) — Forward kinematics in Python from URDF/MJCF/SDF descriptions.
 - [Pinocchio (Python bindings)](https://github.com/stack-of-tasks/pinocchio) — Fast rigid-body dynamics with Python API; used heavily for manipulator IK/ID.
 - [TRAC-IK Python](https://bitbucket.org/traclabs/trac_ik) — Real-time inverse kinematics solver with Python wrappers.
+- [python-fcl](https://github.com/BerkeleyAutomation/python-fcl) — Python bindings to the Flexible Collision Library for self-collision and scene-collision checking.
+- [panda-py](https://github.com/JeanElsner/panda-py) — Real-time Python control of Franka Emika Panda arms including impedance control modes.
+- [dqrobotics (Python)](https://github.com/dqrobotics/python) — Dual-quaternion robotics: modeling and control of serial and parallel manipulators.
 - [robosuite](https://github.com/ARISE-Initiative/robosuite) — MuJoCo-based simulation framework for manipulation research.
 - [robomimic](https://github.com/ARISE-Initiative/robomimic) — Imitation-learning datasets, environments, and algorithms for manipulators.
 - [PyBullet pick-and-place examples](https://github.com/google-research/ravens) — Ravens benchmarks: Transporter-style pick-and-place in PyBullet.
@@ -64,6 +67,9 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [quad-sdk](https://github.com/robomechanics/quad-sdk) — Open quadruped control stack with Python utilities.
 - [Brax](https://github.com/google/brax) — Differentiable physics engine in JAX for fast legged-robot policy training.
 - [Cassie MuJoCo Sim](https://github.com/osudrl/cassie-mujoco-sim) — MuJoCo simulation of Agility Robotics' Cassie biped with Python API.
+- [Crocoddyl](https://github.com/loco-3d/crocoddyl) — Differential dynamic programming for legged-robot trajectory optimization with Python API.
+- [pymanoid](https://github.com/stephane-caron/pymanoid) — Humanoid robotics in Python: LIPM-based walking pattern generation and centroidal control.
+- [rsl_rl](https://github.com/leggedrobotics/rsl_rl) — Fast RL implementations (PPO, DDPG variants) used to train quadruped locomotion policies.
 
 ## Robot Modeling
 
@@ -92,6 +98,12 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [PyPose](https://github.com/pypose/pypose) — PyTorch-based library for robot learning with SLAM/pose-graph primitives.
 - [Nav2 AMCL](https://github.com/ros-navigation/navigation2) — Adaptive Monte Carlo Localization in ROS 2, callable from Python nodes.
 - [g2o-python](https://github.com/miquelmassot/g2o-python) — Python bindings for the g2o graph optimizer used in many SLAM back-ends.
+- [python-graphslam](https://github.com/JeffLIrion/python-graphslam) — Pure-Python implementation of 2D/3D graph SLAM with pose-graph optimization.
+- [KISS-ICP](https://github.com/PRBonn/kiss-icp) — Simple, robust 3D LiDAR odometry with first-class Python API.
+- [Cartographer](https://github.com/cartographer-project/cartographer) — Google's real-time 2D/3D LiDAR SLAM, used through `cartographer_ros` with Python launch files.
+- [RTAB-Map](https://github.com/introlab/rtabmap) — RGB-D, stereo, and LiDAR SLAM with a built-in map-builder GUI and Python bindings via `rtabmap_ros`.
+- [nav2_map_server](https://github.com/ros-navigation/navigation2/tree/main/nav2_map_server) — Occupancy grid load/save/serve utilities for ROS 2, scriptable from Python.
+- [grid_map](https://github.com/ANYbotics/grid_map) — ANYbotics' universal multi-layer grid map library for ego-centric near-field maps, usable from Python via ROS bindings.
 
 ## Motion Planning and Path Planning
 
@@ -102,6 +114,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Dubins-curves](https://github.com/AndrewWalker/pydubins) — Dubins path computation for car-like vehicles.
 - [networkx](https://github.com/networkx/networkx) — Graph algorithms used for roadmap construction and graph search.
 - [trajopt](https://github.com/personalrobotics/aikido) — Trajectory optimization tooling (within the AIKIDO framework) for manipulation.
+- [PythonRobotics — Planning algorithm guide](https://github.com/AtsushiSakai/PythonRobotics#path-planning) — Side-by-side comparison of RRT*, A*, Dijkstra, PRM, Hybrid A*, state-lattice, and MPC trajectory planners to help choose the right algorithm.
 
 ## Motion Control
 
@@ -130,6 +143,8 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [orca4](https://github.com/clydemcqueen/orca4) — Autonomous Underwater Vehicle stack on top of ROS 2 + ArduSub.
 - [gym-auv](https://github.com/simentha/gym-auv) — OpenAI Gym environment for AUV path-following with RL.
 - [usv_sim](https://github.com/disaster-robotics-proalertas/usv_sim_lsa) — Unmanned Surface Vehicle simulator for autonomous boats.
+- [pyroomacoustics](https://github.com/LCAV/pyroomacoustics) — Audio array signal processing including direction-of-arrival (DOA) estimation, applicable to hydrophone arrays on AUVs.
+- [SysIdentPy](https://github.com/wilsonrljr/sysidentpy) — Python toolbox for system identification of nonlinear systems — useful for modeling thrusters and AUV dynamics from data.
 
 ## Automated Driving
 
@@ -140,6 +155,8 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [nuScenes devkit](https://github.com/nutonomy/nuscenes-devkit) — Python devkit for the nuScenes autonomous-driving dataset.
 - [MetaDrive](https://github.com/metadriverse/metadrive) — Lightweight, configurable driving simulator for RL.
 - [highway-env](https://github.com/Farama-Foundation/HighwayEnv) — Collection of environments for highway / intersection decision-making research.
+- [CVAT](https://github.com/cvat-ai/cvat) — Open-source annotation tool for images and video, widely used to label autonomous-driving datasets for segmentation and detection.
+- [AB3DMOT](https://github.com/xinshuoweng/AB3DMOT) — 3D multi-object tracking baseline for track-level fusion of radar/LiDAR/camera detections.
 
 ---
 
@@ -176,6 +193,8 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [ur_rtde](https://gitlab.com/sdurobotics/ur_rtde) — Real-Time Data Exchange C++/Python interface for Universal Robots.
 - [pybricks-micropython](https://github.com/pybricks/pybricks-micropython) — Python (MicroPython) for LEGO Mindstorms / SPIKE Prime.
 - [Adafruit_Python_BBIO](https://github.com/adafruit/adafruit-beaglebone-io-python) — Python I/O library for the BeagleBone family.
+- [tmc_wrs_gazebo](https://github.com/hsr-project/tmc_wrs_gazebo) — Gazebo simulation and Python ROS interfaces for the Toyota Human Support Robot (HSR).
+- [VEXcode Python](https://www.vexrobotics.com/vexcode) — Official Python development environment for VEX V5 / IQ / EXP robotics platforms.
 
 ---
 
@@ -195,6 +214,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [python-control](https://github.com/python-control/python-control) — Python Control Systems Library.
 - [CasADi](https://github.com/casadi/casadi) — Symbolic framework for nonlinear optimization & optimal control.
 - [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) — Maintained successor to OpenAI Gym for RL environments.
+- [esmini](https://github.com/esmini/esmini) — Open-source OpenSCENARIO player for designing driving scenarios; closest open equivalent to MathWorks RoadRunner with Python bindings.
 
 ---
 
