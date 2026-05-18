@@ -3,6 +3,10 @@ scipy>=1.10
 matplotlib>=3.7
 opencv-python>=4.8
 sympy>=1.12
+pillow>=10.0
 jupyter>=1.0
 ipykernel>=6.0
 nbconvert>=7.0
+
+# Optional - only for the interactive pygame demos under demos/
+# pygame>=2.5

@@ -2,11 +2,78 @@
 
 A curated list of awesome libraries, frameworks, simulators, tutorials, and overall resources for the robotics community using **Python**. Inspired by and structured after [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) — same sections, Python ecosystem throughout.
 
-**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **20 fully runnable examples** with embedded plots covering every major application area.
+**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **20 fully runnable examples** with embedded plots covering every major application area, plus **4 interactive pygame demos** you can drive in real time.
 
 [![Notebooks CI](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml/badge.svg)](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml)
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To track 1-for-1 coverage of the MATLAB source repo, see [TRACKING.md](TRACKING.md).
+
+## Featured Demos
+
+Animated GIFs from selected notebooks — click through to the full notebook with math + code.
+
+<table>
+<tr>
+<td width="50%" align="center">
+<a href="notebooks/01_motion_planning_astar.ipynb"><img src="media/astar_expansion.gif" width="100%"/></a><br>
+<b><a href="notebooks/01_motion_planning_astar.ipynb">A* Path Planning</a></b><br>
+<sub>Cells expand outward by f = g + h; optimal path drawn at the end.</sub>
+</td>
+<td width="50%" align="center">
+<a href="notebooks/02_motion_planning_rrt.ipynb"><img src="media/rrt_growth.gif" width="100%"/></a><br>
+<b><a href="notebooks/02_motion_planning_rrt.ipynb">RRT Tree Growth</a></b><br>
+<sub>Rapidly-exploring random tree with 10% goal bias finds a path through 5 obstacles.</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="notebooks/04_localization_particle_filter.ipynb"><img src="media/particle_filter.gif" width="100%"/></a><br>
+<b><a href="notebooks/04_localization_particle_filter.ipynb">Particle Filter Localization</a></b><br>
+<sub>600 particles collapse onto the true pose as range measurements arrive.</sub>
+</td>
+<td align="center">
+<a href="notebooks/05_motion_control_pendulum_lqr.ipynb"><img src="media/lqr_pendulum.gif" width="100%"/></a><br>
+<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">LQR Inverted Pendulum</a></b><br>
+<sub>Continuous-time LQR balances a cart-pole from a 20° perturbation back to upright.</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="notebooks/06_path_tracking_pure_pursuit.ipynb"><img src="media/pure_pursuit.gif" width="100%"/></a><br>
+<b><a href="notebooks/06_path_tracking_pure_pursuit.ipynb">Pure Pursuit Path Tracking</a></b><br>
+<sub>Geometric controller chases a look-ahead point on a sinusoidal reference path.</sub>
+</td>
+<td align="center">
+<a href="notebooks/08_uav_quadrotor_pid.ipynb"><img src="media/quadrotor_pid.gif" width="100%"/></a><br>
+<b><a href="notebooks/08_uav_quadrotor_pid.ipynb">Quadrotor PID</a></b><br>
+<sub>Cascaded altitude + attitude PID rejects roll-axis disturbances while tracking a moving altitude setpoint.</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="notebooks/07_manipulation_ik_2link.ipynb"><img src="media/ik_2link.gif" width="100%"/></a><br>
+<b><a href="notebooks/07_manipulation_ik_2link.ipynb">2-Link Inverse Kinematics</a></b><br>
+<sub>Analytical IK solves for joint angles as the end-effector traces a circle.</sub>
+</td>
+<td align="center">
+<a href="notebooks/11_slam_icp.ipynb"><img src="media/icp_alignment.gif" width="100%"/></a><br>
+<b><a href="notebooks/11_slam_icp.ipynb">ICP Scan Matching</a></b><br>
+<sub>Iterative Closest Point converges the source point cloud onto the target in ~10 iterations.</sub>
+</td>
+</tr>
+</table>
+
+## Interactive Demos (pygame)
+
+Four standalone scripts you can drive in real time. See [`demos/`](demos/) for full details.
+
+```bash
+pip install pygame
+python demos/drive_bicycle.py     # arrow keys: throttle + steer
+python demos/fly_quadrotor.py     # arrow keys: thrust + roll
+python demos/click_to_plan.py     # paint obstacles, A* replans live
+python demos/move_arm.py          # mouse controls end-effector via IK
+```
 
 ## Quick start (notebooks)
 
