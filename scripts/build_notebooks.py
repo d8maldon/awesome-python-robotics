@@ -45,14 +45,33 @@ This notebook implements **A\\*** search on a 2-D occupancy grid with 8-connecte
 
 We use the **Euclidean distance** heuristic, which is admissible (never overestimates) for 8-connected grids with unit-or-√2 edge costs.
 """),
-        md("""## Math
+        md(r"""## Analytical derivation
 
-For each cell `n` we keep two numbers:
+**Problem.** Given a graph $G = (V, E)$ with non-negative edge weights $c: E \to \mathbb{R}_{\ge 0}$, a start node $s$, and a goal node $t$, find $\pi = (s = v_0, v_1, \ldots, v_k = t)$ minimizing $\sum_{i=1}^k c(v_{i-1}, v_i)$.
 
-- `g(n)` — actual cost from the start to `n`
-- `h(n)` — heuristic estimate from `n` to the goal: `‖n − goal‖₂`
+**Best-first search.** For every visited node $n$ keep $g(n)$ = actual cost of the best known path from $s$ to $n$. A heuristic $h: V \to \mathbb{R}_{\ge 0}$ estimates the remaining cost from $n$ to $t$. A\* always expands the node with smallest
 
-A\\* always expands the node with smallest `f(n) = g(n) + h(n)`. When the goal is popped, the path is optimal (because `h` is admissible).
+$$f(n) = g(n) + h(n).$$
+
+**Admissibility.** $h$ is *admissible* iff $h(n) \le h^*(n)$ for every $n$, where $h^*(n)$ is the true cost-to-go. Euclidean distance is admissible for our 8-connected grid because no path can be shorter than the straight line.
+
+**Consistency.** $h$ is *consistent* iff $h(n) \le c(n, n') + h(n')$ for every edge. Consistency implies admissibility, and Euclidean distance is consistent.
+
+**Optimality theorem.** If $h$ is consistent, A\* expands nodes in order of non-decreasing $f$, and the first time $t$ is popped from the open set its $g$-value is optimal: $g(t) = h^*(s)$.
+
+**Complexity.** Binary-heap priority queue: $O(|E| \log |V|)$ time, $O(|V|)$ space.
+
+### Compatibility check — math ↔ code
+
+| Step | Code |
+|---|---|
+| $h(n) = \sqrt{(\Delta x)^2 + (\Delta y)^2}$ | `def h(a, b): return np.hypot(a[0]-b[0], a[1]-b[1])` |
+| Edge cost = step distance ($1$ or $\sqrt 2$) | `tent = gv + np.hypot(dy, dx)` |
+| Always pop smallest $f$ | `heapq.heappop(open_heap)` on `(f, g, node, parent)` |
+| Push neighbor with $f = g + h$ | `heapq.heappush(open_heap, (tent + h((ny,nx), goal), tent, (ny,nx), cur))` |
+| Skip closed nodes | `if cur in came: continue` |
+| Optimal path on first pop of goal | `if cur == goal: return path, ...` |
+| Reconstruct path by parent pointers | `while cur is not None: path.append(cur); cur = came[cur]` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -152,9 +171,36 @@ def nb_02_rrt():
 
 **Section:** Motion Planning · **Mirrors MATLAB:** *RRT Planners for Mobile Robots*
 
-RRT incrementally builds a tree by sampling random points in the configuration space, finding the nearest tree node, and growing a small step toward the sample. This biases the tree to rapidly explore unexplored regions.
+RRT incrementally builds a tree by sampling random points in the configuration space, finding the nearest tree node, and growing a small step toward the sample.
+"""),
+        md(r"""## Analytical derivation
 
-We add a **10% goal bias** so the tree occasionally tries to extend toward the goal directly.
+**Algorithm.** Let $\mathcal{X} \subset \mathbb{R}^d$ be the configuration space and $\mathcal{X}_\text{free} \subseteq \mathcal{X}$ the collision-free subset. We grow a tree $\mathcal{T} = (V, E)$ rooted at $x_\text{init}$:
+
+1. Sample $x_\text{rand} \in \mathcal{X}$ (uniform), or with probability $p_g$ set $x_\text{rand} \leftarrow x_\text{goal}$ (goal bias).
+2. Find nearest neighbor in tree: $x_\text{near} = \arg\min_{x \in V} \|x - x_\text{rand}\|$.
+3. Steer: $x_\text{new} = x_\text{near} + \eta \cdot \frac{x_\text{rand} - x_\text{near}}{\|x_\text{rand} - x_\text{near}\|}$ if distance > step size $\eta$, else $x_\text{new} = x_\text{rand}$.
+4. If both $x_\text{new}$ and the line segment $(x_\text{near}, x_\text{new})$ are collision-free, add $x_\text{new}$ to $V$ and edge $(x_\text{near}, x_\text{new})$ to $E$.
+5. Stop when $\|x_\text{new} - x_\text{goal}\| < \tau$ (goal tolerance).
+
+**Probabilistic completeness theorem (LaValle, 1998).** If $\mathcal{X}_\text{free}$ has a non-empty interior and a solution path exists with positive clearance, then
+
+$$\lim_{n \to \infty} \Pr\bigl[\text{RRT finds a feasible path in } n \text{ samples}\bigr] = 1.$$
+
+**Not asymptotically optimal.** Unlike RRT\*, plain RRT does *not* converge to the optimal-cost path — its solution is whatever the first feasible sequence of straight-line segments happens to be. RRT\* additionally rewires neighbors within radius $r_n = \gamma (\log n / n)^{1/d}$ on each insertion and provably converges to the optimal path as $n \to \infty$.
+
+**Goal bias.** With $p_g = 0.1$ each sample is the goal with probability $0.1$. This trades off exploration vs. exploitation; $p_g \to 1$ degrades to a greedy planner that gets stuck behind obstacles.
+
+### Compatibility check — math ↔ code
+
+| Step | Code |
+|---|---|
+| Goal bias sample | `rnd = goal if np.random.random() < 0.1 else np.random.uniform(0, world, 2)` |
+| Nearest neighbor (brute force) | `i_n = int(np.argmin([np.linalg.norm(p - rnd) for p in tree]))` |
+| Steer by fixed step $\eta$ | `new = near + (dirn / dist) * step if dist > step else rnd` |
+| Free-space + edge collision check | `if in_col(new) or edge_col(near, new): continue` |
+| Add node + parent edge | `tree.append(new); parent[len(tree)-1] = i_n` |
+| Goal tolerance $\tau$ | `if np.linalg.norm(new - goal) < step: ... break` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -260,6 +306,21 @@ $z = [r,\\ \\phi]^T = [\\|\\ell - p\\|,\\ \\arctan2(\\ell_y - y, \\ell_x - x) - 
 
 The EKF linearizes both with the Jacobians $G_x$ and $H$ at each step.
 """),
+        md(r"""### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| Motion model $f(x, u)$ | `def motion(x, u, dt): return x + dt*np.array([u[0]*cos(x[2]), u[0]*sin(x[2]), u[1]])` |
+| Motion Jacobian $G_x = \partial f / \partial x$ | `def G_x(x, u, dt): return [[1,0,-u[0]*sin(x[2])*dt], [0,1,u[0]*cos(x[2])*dt], [0,0,1]]` |
+| Observation $h(x, \ell) = [r, \phi]$ | `def observe(x, lm): return np.array([np.hypot(dx, dy), np.arctan2(dy, dx) - x[2]])` |
+| Observation Jacobian $H = \partial h / \partial x$ | `def H_jacobian(x, lm): return [[-dx/r, -dy/r, 0], [dy/q, -dx/q, -1]]` |
+| Predict $\mu^- = f(\mu, u)$ | `mu = motion(mu, u_noisy, dt)` |
+| Predict $\Sigma^- = G \Sigma G^T + Q$ | `Sigma = G @ Sigma @ G.T + Q` |
+| Bearing wrap to $(-\pi, \pi]$ | `def wrap(a): return (a + np.pi) % (2*np.pi) - np.pi` |
+| Innovation $\nu = z - h(\mu^-)$ | `innov = z - z_hat; innov[1] = wrap(innov[1])` |
+| Kalman gain $K = \Sigma H^T (H\Sigma H^T + R)^{-1}$ | `S = H @ Sigma @ H.T + R; K = Sigma @ H.T @ np.linalg.inv(S)` |
+| Update $\mu = \mu + K\nu,\ \Sigma = (I - KH)\Sigma$ | `mu = mu + K @ innov; Sigma = (np.eye(3) - K @ H) @ Sigma` |
+"""),
         code("""import numpy as np
 import matplotlib.pyplot as plt
 
@@ -356,7 +417,42 @@ def nb_04_particle_filter():
 
 **Section:** Localization · **Mirrors MATLAB:** *Monte Carlo Localization*
 
-The particle filter represents the belief over robot pose with a set of weighted samples (particles). At each step we (1) propagate each particle through the motion model, (2) weight by observation likelihood, (3) resample proportional to weights.
+The particle filter represents the belief over robot pose with a set of weighted samples (particles).
+"""),
+        md(r"""## Analytical derivation
+
+We want to recursively estimate $p(x_t \mid z_{1:t}, u_{1:t})$ where $x_t$ is the pose, $u_t$ is the control input, and $z_t$ is the observation. Bayes-filter recursion:
+
+$$p(x_t \mid z_{1:t}, u_{1:t}) \;\propto\; p(z_t \mid x_t)\;\int p(x_t \mid x_{t-1}, u_t)\,p(x_{t-1} \mid z_{1:t-1}, u_{1:t-1})\,dx_{t-1}$$
+
+The particle filter approximates this with $N$ weighted samples $\{(x_t^{(i)}, w_t^{(i)})\}_{i=1}^N$:
+
+$$p(x_t \mid z_{1:t}, u_{1:t}) \;\approx\; \sum_{i=1}^N w_t^{(i)}\,\delta(x_t - x_t^{(i)})$$
+
+**Sequential Importance Sampling (with motion-model proposal).** At each step:
+
+1. **Predict:** $\tilde x_t^{(i)} \sim p(x_t \mid x_{t-1}^{(i)}, u_t)$  (sample from the motion model)
+2. **Weight:** if we use the *motion model* as proposal, the importance weight simplifies to
+$$w_t^{(i)} \;\propto\; w_{t-1}^{(i)}\,p(z_t \mid \tilde x_t^{(i)})$$
+For Gaussian observation noise $z = h(x) + v$, $v \sim \mathcal{N}(0, \Sigma)$:
+$$p(z_t \mid \tilde x_t^{(i)}) \;\propto\; \exp\!\Bigl(-\tfrac{1}{2}\,(z_t - h(\tilde x_t^{(i)}))^T \Sigma^{-1} (z_t - h(\tilde x_t^{(i)}))\Bigr)$$
+Compute in log-space then exponentiate after subtracting the maximum (avoids underflow).
+3. **Resample:** if effective sample size $N_\text{eff} = 1 / \sum (w^{(i)})^2$ falls below threshold (or every step). Systematic resampling preserves diversity with $O(N)$ cost:
+$$U^{(i)} = \frac{i - 1 + U_0}{N},\quad U_0 \sim \text{Unif}(0,1)$$
+and pick particle $j$ such that $\sum_{k=1}^{j-1} w^{(k)} < U^{(i)} \le \sum_{k=1}^{j} w^{(k)}$.
+
+After resampling all weights are reset to $1/N$.
+
+### Compatibility check — math ↔ code
+
+| Step | Code |
+|---|---|
+| Predict $\tilde x_t^{(i)}$ via motion model + noise | `particles += u + np.random.randn(N, 3) * np.array([0.08, 0.08, 0.04])` |
+| $h(x) = \|\ell_j - x\|$ (range to landmark $j$) | `expected = np.linalg.norm(landmarks[:, None, :] - particles[None, :, :2], axis=2)` |
+| $(z - h(x))/\sigma$ standardized residual | `err = (z[:, None] - expected) / range_noise` |
+| $\log w \propto -\tfrac{1}{2}\sum_j r_j^2$ | `log_w = -0.5 * np.sum(err ** 2, axis=0)` |
+| Normalize after max-subtract | `w = np.exp(log_w - log_w.max()); w /= w.sum()` |
+| Systematic resampling | `idx = np.searchsorted(np.cumsum(w), (np.arange(N) + np.random.random()) / N)` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -687,8 +783,37 @@ def nb_06_pure_pursuit():
 **Section:** Path Tracking · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance*
 
 Pure pursuit is a geometric controller that finds a point on the reference path at a fixed **look-ahead distance** ahead of the robot, then computes the curvature that would carry the robot to that point in a single arc.
+"""),
+        md(r"""## Analytical derivation
 
-For a unicycle with linear velocity `v`, the commanded angular velocity is `ω = 2v sin(α) / L_d` where `α` is the angle from the robot heading to the look-ahead point.
+**Geometric setup.** Place the robot at the origin with heading along $+\hat x$. The target point $(x_t, y_t)$ on the path is at distance $L_d$ from the robot:
+
+$$x_t^2 + y_t^2 = L_d^2$$
+
+The robot must trace a *circular arc* from its current pose to the target. Let $R$ be the radius of curvature of that arc. Geometrically, the perpendicular from the robot to the line $\text{(robot} \to \text{target)}$ has the chord property:
+
+$$y_t = \frac{L_d^2}{2R}\quad\Longrightarrow\quad \kappa = \frac{1}{R} = \frac{2 y_t}{L_d^2}$$
+
+Defining $\alpha$ as the angle from the robot heading to the target:
+
+$$y_t = L_d \sin\alpha,\qquad \kappa = \frac{2 \sin\alpha}{L_d}$$
+
+For a unicycle moving at velocity $v$ the relationship between curvature and angular velocity is $\omega = v\kappa$, giving the **pure-pursuit law**:
+
+$$\boxed{\;\omega \;=\; \frac{2 v \sin\alpha}{L_d}\;}$$
+
+**Choosing $L_d$.** Small $L_d$ → aggressive tracking but oscillation. Large $L_d$ → smooth but cuts corners. Common practice: $L_d \propto v$ (longer look-ahead at speed).
+
+**Stability.** Linearizing the closed loop around a straight reference path gives a damped second-order system with damping ratio $\zeta$ increasing in $L_d$. Pure pursuit is globally stable for any $L_d > 0$ on a straight path, locally stable on curved paths if $L_d$ is large compared to the path curvature radius.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| $\alpha = \arctan2(y_t - y_r,\ x_t - x_r) - \theta_r$ | `alpha = np.arctan2(tg[1]-x[1], tg[0]-x[0]) - x[2]` |
+| Look-ahead point: scan path forward until $\|p_j - p_r\| \ge L_d$ | `while j < len(path)-1 and np.linalg.norm(path[j] - x[:2]) < Ld: j += 1` |
+| $\omega = 2 v \sin\alpha / L_d$ | `omega = 2 * v * np.sin(alpha) / Ld` |
+| Unicycle integration | `x = x + dt * np.array([v*cos, v*sin, omega])` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -750,6 +875,16 @@ $$\\cos\\theta_2 = \\frac{x^2 + y^2 - l_1^2 - l_2^2}{2 l_1 l_2}$$
 $$\\theta_1 = \\arctan2(y, x) - \\arctan2(l_2 \\sin\\theta_2,\\ l_1 + l_2 \\cos\\theta_2)$$
 
 The choice of $+\\arccos$ vs $-\\arccos$ for $\\theta_2$ selects the **elbow-up** or **elbow-down** branch.
+"""),
+        md(r"""### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| $r^2 = x^2 + y^2$ | `r2 = x * x + y * y` |
+| $\cos\theta_2 = \dfrac{r^2 - l_1^2 - l_2^2}{2 l_1 l_2}$ (clipped) | `c2 = np.clip((r2 - l1**2 - l2**2) / (2*l1*l2), -1, 1)` |
+| $\theta_2 = \pm\arccos(\cos\theta_2)$ | `th2 = np.arccos(c2) if elbow_up else -np.arccos(c2)` |
+| $\theta_1 = \arctan2(y, x) - \arctan2(l_2\sin\theta_2,\ l_1 + l_2\cos\theta_2)$ | `th1 = np.arctan2(y, x) - np.arctan2(l2*np.sin(th2), l1 + l2*np.cos(th2))` |
+| Forward kinematics for visualization | `p1 = (l1*cos(th1), l1*sin(th1)); p2 = p1 + (l2*cos(th1+th2), l2*sin(th1+th2))` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -942,6 +1077,26 @@ Classical lane detection pipeline:
 4. Run the **probabilistic Hough transform** to extract line segments.
 
 We synthesize a road scene so the notebook needs no external images.
+
+### Analytical underpinning + compatibility
+
+**Canny edges.** For each pixel compute gradient magnitude
+
+$$\|\nabla I\| = \sqrt{I_x^2 + I_y^2},\qquad I_x = \partial I / \partial x,\ I_y = \partial I / \partial y$$
+
+via Sobel kernels, suppress non-maxima along the gradient direction, then hysteresis-threshold (`low`, `high`): keep pixels above `high`, and pixels above `low` that are connected to a `high` pixel.
+
+**Hough line transform.** A line $\rho = x\cos\theta + y\sin\theta$ is parameterized by $(\rho, \theta)$. For each edge pixel $(x_i, y_i)$, vote in $(\rho, \theta)$-space along every curve $\rho = x_i\cos\theta + y_i\sin\theta$. Peaks in the accumulator correspond to lines that pass through many edge pixels.
+
+The *probabilistic* Hough variant samples a random subset of edge pixels (much faster) and returns line *segments* with explicit endpoints rather than the full $(\rho, \theta)$ line.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| Sobel-based gradient + hysteresis | `edges = cv2.Canny(gray, 60, 160)` (low=60, high=160) |
+| ROI trapezoid mask | `cv2.fillPoly(mask, roi, 255); edges_roi = cv2.bitwise_and(edges, mask)` |
+| Probabilistic Hough line segments | `cv2.HoughLinesP(edges_roi, 1, np.pi/180, 40, minLineLength=35, maxLineGap=25)` (resolution: 1 px, 1°; vote threshold 40) |
 """),
         code("""import numpy as np
 import cv2
@@ -1009,6 +1164,17 @@ Build an occupancy grid by ray-casting simulated lidar from a few known robot po
 $$\\ell(c) \\leftarrow \\ell(c) + \\log\\frac{p(z\\mid m_c)}{p(z\\mid \\neg m_c)}$$
 
 Final probability: $p = 1 / (1 + e^{-\\ell})$.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| Ray casting per beam $\theta + \alpha$ | `for r in np.arange(step, max_range, step): x = pose[0]+r*cos(pose[2]+a); y = pose[1]+r*sin(pose[2]+a)` |
+| Hit test against rectangle obstacles | `def hit_rect(x, y): for (x0,y0,x1,y1) in true_obs: if x0<=x<=x1 and y0<=y<=y1: return True` |
+| Free-cell log-odds increment $\ell_\text{free}$ | `log_odds[int(y/res), int(x/res)] += l_free` along ray |
+| Occupied-cell log-odds increment $\ell_\text{occ}$ | `log_odds[int(y/res), int(x/res)] += l_occ` at hit |
+| Max-range "no hit" rays don't mark occupied | `if r < 12.0: ... log_odds[...] += l_occ` |
+| Recover probability $p = \sigma(\ell)$ | `prob = 1 / (1 + np.exp(-log_odds))` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1094,9 +1260,53 @@ def nb_11_icp():
 
 **Section:** SLAM · **Mirrors MATLAB:** *2D Lidar SLAM Implementations* (scan-matching front-end)
 
-ICP aligns two point clouds by alternating between (a) finding nearest-neighbor correspondences and (b) solving for the rigid transform (R, t) that minimizes the sum-of-squared distances over those matches.
+ICP aligns two point clouds by alternating between (a) finding nearest-neighbor correspondences and (b) solving for the rigid transform $(R, t)$ that minimizes the sum-of-squared distances over those matches.
+"""),
+        md(r"""## Analytical derivation
 
-The rigid transform step has a closed-form solution via SVD on the cross-covariance matrix.
+**Problem.** Given source points $\{p_i\}_{i=1}^N$ and target points $\{q_i\}_{i=1}^N$ (already paired), find rotation $R \in SO(d)$ and translation $t \in \mathbb{R}^d$ minimizing
+
+$$E(R, t) \;=\; \sum_{i=1}^{N} \|R\,p_i + t - q_i\|^2$$
+
+**Step 1 — solve for $t$ given $R$.** Setting $\partial E / \partial t = 0$:
+
+$$\sum_i (R\,p_i + t - q_i) = 0 \quad\Longrightarrow\quad t = \bar q - R\,\bar p,\qquad \bar p = \tfrac{1}{N}\sum p_i,\ \bar q = \tfrac{1}{N}\sum q_i$$
+
+So the optimal translation just aligns the centroids. Substituting back, the problem becomes: find $R$ minimizing
+
+$$E'(R) \;=\; \sum_i \|R\,p'_i - q'_i\|^2,\qquad p'_i = p_i - \bar p,\ q'_i = q_i - \bar q$$
+
+**Step 2 — solve for $R$ (Kabsch algorithm).** Expand the norm:
+
+$$E'(R) \;=\; \sum_i (\|p'_i\|^2 + \|q'_i\|^2) - 2 \sum_i {q'_i}^T R\,p'_i$$
+
+The first sum is constant in $R$; minimizing $E'$ is equivalent to *maximizing* $\sum_i {q'_i}^T R\,p'_i = \mathrm{tr}\!\left(R \sum_i p'_i {q'_i}^T\right) = \mathrm{tr}(R H)$ where
+
+$$H \;=\; \sum_i p'_i\,{q'_i}^T \quad \in \mathbb{R}^{d \times d}\quad\text{(cross-covariance)}$$
+
+By the von Neumann trace inequality, $\mathrm{tr}(R H)$ is maximized when the singular values of $R H$ align. With $H = U \Sigma V^T$ (SVD), the optimum is
+
+$$\boxed{\;R^\star \;=\; V\,U^T\;}$$
+
+**Reflection guard.** If $\det(V U^T) = -1$ the answer is an improper rotation (a reflection). Replace by
+
+$$R^\star \;=\; V\,\mathrm{diag}(1, \ldots, 1, -1)\,U^T$$
+
+(equivalent to flipping the sign of the last column of $V$ before forming $R$).
+
+**Iteration.** ICP alternates (1) nearest-neighbor correspondence assignment and (2) optimal rigid transform; each iteration is guaranteed to weakly decrease $E$. Convergence is to a local minimum (initialization matters).
+
+### Compatibility check — math ↔ code
+
+| Step | Code |
+|---|---|
+| Nearest-neighbor correspondence | `d = np.linalg.norm(s[:, None] - tgt[None], axis=2); m = tgt[d.argmin(axis=1)]` |
+| Centroids | `sm, mm = s.mean(0), m.mean(0)` |
+| Cross-covariance $H$ | `H = (s - sm).T @ (m - mm)` |
+| SVD $H = U \Sigma V^T$ | `U, _, Vt = np.linalg.svd(H)` |
+| Optimal $R = V U^T$ | `R = Vt.T @ U.T` |
+| Reflection guard | `if np.linalg.det(R) < 0: Vt[-1] *= -1; R = Vt.T @ U.T` |
+| Translation $t = \bar q - R \bar p$ | `s = (R @ s.T).T + (mm - R @ sm)` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1178,7 +1388,55 @@ EKF-SLAM jointly estimates the robot pose **and** the positions of $N$ landmarks
 
 $$\\mu = [x_r,\\ y_r,\\ \\theta_r,\\ x_{\\ell_1},\\ y_{\\ell_1},\\ \\dots,\\ x_{\\ell_N},\\ y_{\\ell_N}]^T$$
 
-Each time we observe a landmark for the first time, we **initialize** its position from the current robot pose and observation. Subsequent observations refine both the robot pose and the landmark estimate (and their covariance).
+Each time we observe a landmark for the first time, we **initialize** its position from the current robot pose and observation.
+"""),
+        md(r"""## Analytical derivation
+
+**Augmented state.** Stack robot pose and $N$ landmark positions:
+
+$$\mu = [x_r,\ y_r,\ \theta_r,\ x_{\ell_1},\ y_{\ell_1},\ \dots,\ x_{\ell_N},\ y_{\ell_N}]^T \in \mathbb{R}^{3+2N}$$
+
+Covariance $\Sigma \in \mathbb{R}^{(3+2N)\times(3+2N)}$ is full — the joint posterior couples the robot to every landmark seen.
+
+**Prediction step.** The control $u = (v, \omega)$ moves only the robot:
+
+$$\mu_{t+1}^{1:3} = \mu_t^{1:3} + \Delta t \begin{bmatrix} v\cos\theta_r \\ v\sin\theta_r \\ \omega \end{bmatrix},\qquad \mu_{t+1}^{4:} = \mu_t^{4:}$$
+
+The full-state Jacobian $G$ is identity except for the $3\times 3$ block in the top-left:
+
+$$G = I_{3+2N} + \begin{bmatrix} G_r - I_3 & 0 \\ 0 & 0 \end{bmatrix},\qquad G_r = \begin{bmatrix} 1 & 0 & -v\sin\theta_r\,\Delta t \\ 0 & 1 & v\cos\theta_r\,\Delta t \\ 0 & 0 & 1 \end{bmatrix}$$
+
+Predict covariance: $\Sigma = G \Sigma G^T + F^T Q F$ where $F = [I_3,\ 0]$ injects process noise into only the robot block.
+
+**Landmark initialization.** When landmark $j$ is first observed with $(r, \phi)$:
+
+$$\mu^{\ell_j} = \mu^r + r \begin{bmatrix} \cos(\theta_r + \phi) \\ \sin(\theta_r + \phi) \end{bmatrix}$$
+
+**Observation update.** For range-bearing observation $z = (r, \phi)$ of landmark $j$ at $(\ell_x, \ell_y)$, define $\delta = (\delta_x, \delta_y) = (\ell_x - x_r, \ell_y - y_r)$ and $q = \delta^T\delta$. The expected measurement is
+
+$$\hat z = \begin{bmatrix} \sqrt{q} \\ \arctan2(\delta_y, \delta_x) - \theta_r \end{bmatrix}$$
+
+**Sparse observation Jacobian.** Only the robot-pose columns (1–3) and the columns of landmark $j$ (3+2j-1, 3+2j) are nonzero:
+
+$$H \in \mathbb{R}^{2 \times (3+2N)}:\quad H_{(1:2,\,r)} = \frac{1}{q}\begin{bmatrix} -\sqrt{q}\delta_x & -\sqrt{q}\delta_y & 0 \\ \delta_y & -\delta_x & -q \end{bmatrix},\quad H_{(1:2,\,\ell_j)} = \frac{1}{q}\begin{bmatrix} \sqrt{q}\delta_x & \sqrt{q}\delta_y \\ -\delta_y & \delta_x \end{bmatrix}$$
+
+Innovation: $\nu = z - \hat z$ (wrap bearing to $(-\pi, \pi]$). Innovation covariance: $S = H \Sigma H^T + R$. Kalman gain: $K = \Sigma H^T S^{-1}$. Update:
+
+$$\mu \leftarrow \mu + K\nu,\qquad \Sigma \leftarrow (I - K H)\,\Sigma$$
+
+The cross-correlations in $\Sigma$ are what couple robot-pose corrections to landmark refinements — that's where the "SLAM" magic lives.
+
+### Compatibility check — math ↔ code
+
+| Step | Code |
+|---|---|
+| Robot motion in augmented state | `mu[:3] = mu[:3] + dt * np.array([u[0]*np.cos(th), u[0]*np.sin(th), u[1]])` |
+| Sparse motion Jacobian (identity + robot block) | `G = np.eye(n); G[0,2] = -dt*u[0]*np.sin(th); G[1,2] = dt*u[0]*np.cos(th)` |
+| Inject process noise via $F$ | `F = np.zeros((3, n)); F[:3,:3] = np.eye(3); Sigma = G @ Sigma @ G.T + F.T @ Q @ F` |
+| First-observation landmark init | `mu[3+2*i] = mu[0] + z[0]*np.cos(z[1]+mu[2]); mu[3+2*i+1] = ...sin(...)` |
+| Expected measurement $\hat z$ | `z_hat = np.array([r, wrap(np.arctan2(dy, dx) - mu[2])])` |
+| Sparse $H$ (only robot cols + landmark $j$ cols filled) | `H = np.zeros((2, n)); H[:, :3] = ...; H[:, 3+2*i:3+2*i+2] = ...` |
+| Kalman update | `K = Sigma @ H.T @ np.linalg.inv(S); mu = mu + K @ innov; Sigma = (I - K @ H) @ Sigma` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1284,6 +1542,19 @@ def nb_13_dijkstra():
 Dijkstra is A\\* with a zero heuristic: it explores cells in pure cost-to-come order. This guarantees optimality but expands more nodes than A\\* (which uses the goal-distance heuristic to bias exploration).
 
 Comparing the two on the same map helps illustrate why an admissible heuristic matters.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| $f(n) = g(n) + 0 = g(n)$ (zero heuristic) | priority queue uses `(d, current, parent)` with no $h$ term |
+| Edge cost = step distance | `nd = d + np.hypot(dy, dx)` |
+| Always pop smallest $g$ | `heapq.heappop(heap)` |
+| Relax neighbor: $g(n') = \min(g(n'),\ g(n) + c(n,n'))$ | `if nd < dist.get((ny, nx), np.inf): dist[(ny,nx)] = nd; heapq.heappush(...)` |
+| Skip closed nodes | `if cur in came: continue` |
+| Path reconstruction | `while cur is not None: path.append(cur); cur = came[cur]` |
+
+Notice that the *only* difference from notebook 01 is the absence of the $h$ term in the priority — Dijkstra is the special case A\\* with $h \equiv 0$.
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1356,7 +1627,49 @@ def nb_14_dwa():
 
 **Section:** Motion Planning · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance*
 
-DWA is a **local** planner: at each control step it samples reachable (v, ω) pairs in the dynamic window (limited by current velocity and acceleration), simulates each forward for a short horizon, and scores the resulting trajectory by heading toward the goal, clearance to obstacles, and forward velocity.
+DWA is a **local** planner: at each control step it samples reachable $(v, \omega)$ pairs, simulates each forward for a short horizon, and scores the resulting trajectory.
+"""),
+        md(r"""## Analytical derivation
+
+**Dynamic window.** For a differential-drive robot with bounded velocity and acceleration, the set of *admissible* controls in the next step $\Delta t$ is
+
+$$V_d = \bigl\{(v, \omega) \;:\; v \in [\max(v_\min, v - a_\max \Delta t),\ \min(v_\max, v + a_\max \Delta t)],\ \omega \in [\max(\omega_\min, \omega - \alpha_\max \Delta t),\ \min(\omega_\max, \omega + \alpha_\max \Delta t)]\bigr\}$$
+
+This is the "dynamic window" — a rectangle in $(v, \omega)$-space centered at the current velocity, sized by acceleration limits.
+
+**Trajectory rollout.** For each $(v, \omega) \in V_d$, simulate forward for horizon $T_p$ using the unicycle model:
+
+$$x(\tau) = x_0 + v \cos\theta_0\,\tau,\quad y(\tau) = y_0 + v \sin\theta_0\,\tau,\quad \theta(\tau) = \theta_0 + \omega \tau$$
+
+(For constant $(v,\omega)$ this is actually an arc, but discretized as a sequence of points.)
+
+**Cost function.** Pick the $(v^*, \omega^*) \in V_d$ minimizing
+
+$$J(v, \omega) \;=\; w_g\,\|\mathbf{p}_T - \mathbf{p}_\text{goal}\|\;+\;w_h\,|\theta_T - \theta_\text{goal-direction}|\;+\;\frac{w_o}{d_\min}\;+\;w_v\,(v_\max - v_T)$$
+
+with $\mathbf{p}_T = (x(T_p), y(T_p))$, $d_\min$ the minimum clearance to any obstacle over the trajectory. Hard constraint: $J = +\infty$ if $d_\min < r_\text{safety}$.
+
+Each term has a clear role:
+- **Goal-distance term** ($w_g$) pulls the robot toward the goal.
+- **Heading term** ($w_h$) penalizes pointing the wrong way at end-of-horizon.
+- **Obstacle clearance term** ($w_o / d_\min$) is large when we get near an obstacle.
+- **Velocity reward** ($w_v$) prefers faster motion to avoid getting stuck.
+
+The result is a *receding-horizon, sample-based, single-step MPC* — much cheaper than full MPC but myopic (no look-ahead beyond $T_p$).
+
+### Compatibility check — math ↔ code
+
+| Step | Code |
+|---|---|
+| Dynamic window in $v$ | `vs = np.linspace(max(v_min, v - a_max*dt), min(v_max, v + a_max*dt), 7)` |
+| Dynamic window in $\omega$ | `ws = np.linspace(max(w_min, w - alpha_max*dt), min(w_max, w + alpha_max*dt), 11)` |
+| Trajectory rollout for $T_p$ s | `for _ in range(int(predict_t/dt)): s[0]+=v*cos*dt; s[1]+=v*sin*dt; s[2]+=w*dt` |
+| Goal-distance term $w_g\|p_T - p_g\|$ | `1.0 * goal_dist` |
+| Heading term $w_h\|\theta_T - \angle(p_g - p_T)\|$ | `0.3 * heading_cost` where `heading_cost = abs(np.arctan2(dy,dx) - traj[-1,2])` |
+| Clearance term $w_o / d_\min$ | `0.2 / d.min()` |
+| Hard clearance constraint | `if d.min() < 0.5: return np.inf` |
+| Velocity reward $w_v(v_\max - v_T)$ | `0.05 * (v_max - traj[-1, 3])` |
+| Pick best $(v^*,\omega^*)$ | nested loop `if c < best_c: best_c, best_v, best_w = c, v, w` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1442,6 +1755,18 @@ Stanley control measures cross-track and heading error at the **front axle** of 
 $$\\delta = \\psi_e + \\arctan\\!\\left(\\frac{k \\cdot e_{ct}}{v}\\right)$$
 
 where $\\psi_e$ is heading error, $e_{ct}$ is signed cross-track distance, and $k$ is a gain.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| Front-axle position $(f_x, f_y) = (x + L\cos\theta, y + L\sin\theta)$ | `fx = x[0] + L*np.cos(x[2]); fy = x[1] + L*np.sin(x[2])` |
+| Closest path index $j = \arg\min_k \|p_k - (f_x, f_y)\|$ | `j = int(np.argmin(np.linalg.norm(path - [fx, fy], axis=1)))` |
+| Local path tangent angle $\psi_p$ | `path_angle = np.arctan2(path_dir[1], path_dir[0])` |
+| Cross-track error (signed, perpendicular to tangent) | `cross = np.dot([fx - path[j,0], fy - path[j,1]], [-sin(path_angle), cos(path_angle)])` |
+| Heading error $\psi_e = \psi_p - \theta$ (wrapped) | `heading_err = wrap(path_angle - x[2])` |
+| Stanley steering $\delta = \psi_e + \arctan(k \cdot e_{ct} / v)$ | `delta = heading_err + np.arctan2(k * cross, v)` |
+| Bicycle kinematics with $\delta$ | `x[0]+=v*cos*dt; x[1]+=v*sin*dt; x[2]+=v*tan(delta)/L*dt` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1504,6 +1829,18 @@ For arms with more joints than task DOFs (or no closed-form solution), we use **
 $$\\Delta\\theta = J^T (J J^T + \\lambda^2 I)^{-1} \\Delta x$$
 
 The damping $\\lambda$ keeps the update bounded near singularities.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| Cumulative angle for link $i$: $\phi_i = \sum_{k \le i} \theta_k$ | accumulated via `a += theta[i]` in `fk_all` |
+| End-effector position $p = \sum_i L_i(\cos\phi_i, \sin\phi_i)$ | `pts[-1] + np.array([l[i]*np.cos(a), l[i]*np.sin(a)])` |
+| Jacobian column $i$: $z \times (p - p_i)$ where $z = \hat e_z$ | `J[0,i] = -r[1]; J[1,i] = r[0]` with `r = end - pts[i]` |
+| Error $\Delta x = x^* - p$ | `err = target - end` |
+| Damped least-squares $\Delta\theta = J^T(JJ^T + \lambda^2 I)^{-1}\Delta x$ | `dtheta = J.T @ np.linalg.inv(J @ J.T + lam**2 * np.eye(2)) @ err` |
+| Gradient step $\theta \leftarrow \theta + \alpha\Delta\theta$ | `theta = theta + step * dtheta` |
+| Convergence test $\|\Delta x\| < \tau$ | `if np.linalg.norm(err) < tol: break` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1581,6 +1918,31 @@ def nb_17_orb():
 **Section:** Perception · **Mirrors MATLAB:** *Feature Detection, Extraction, and Matching*
 
 ORB (Oriented FAST and Rotated BRIEF) is a fast, rotation-invariant feature detector + descriptor. We detect features in two synthetic images (one is a rotated + translated version of the other) and match them with Hamming distance + cross-check.
+
+### Analytical underpinning + compatibility
+
+**FAST corner test.** A pixel $p$ with intensity $I_p$ is a corner if, among the 16 pixels on a circle of radius 3 around it, at least $N$ contiguous pixels are all brighter than $I_p + t$ or all darker than $I_p - t$ (typically $N = 9$, $t$ = small threshold). The check on $N=9$ contiguous pixels is what makes it both fast and rotationally meaningful.
+
+**Orientation assignment.** Compute the intensity centroid of a patch around the corner; the vector from corner center to centroid defines the orientation angle $\theta$.
+
+**BRIEF descriptor.** Pre-select $n$ (typically 256) pairs of pixel locations $(p_i, q_i)$ within a patch around the corner. The descriptor is the binary string
+
+$$d_i = \begin{cases} 1 & \text{if } I(p_i) < I(q_i) \\ 0 & \text{otherwise} \end{cases},\quad i = 1, \ldots, n$$
+
+For ORB, the pixel pairs are rotated by the orientation $\theta$ before sampling — that's the "Rotated" in "Rotated BRIEF" and is what makes ORB rotation-invariant.
+
+**Matching.** Distance between two BRIEF descriptors is the **Hamming distance** = number of bit positions where they differ = `popcount(d_1 XOR d_2)`. Fast brute-force pairwise comparison is feasible because descriptors are binary.
+
+**Cross-check.** Keep only pairs where $d_a$ is the closest match for $d_b$ *and* vice versa. Greatly reduces false matches.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| FAST corner + rotated BRIEF, up to 300 features | `orb = cv2.ORB_create(nfeatures=300)` |
+| Detect keypoints + descriptors | `kp, des = orb.detectAndCompute(img, None)` (descriptor is 32-byte binary) |
+| Hamming-distance matcher with cross-check | `bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)` |
+| Match + sort by descriptor distance | `matches = sorted(bf.match(des1, des2), key=lambda m: m.distance)[:40]` |
 """),
         code("""import cv2
 import numpy as np
@@ -1632,7 +1994,54 @@ def nb_18_kalman_tracking():
 
 **Section:** Perception · **Mirrors MATLAB:** *Object Tracking and Motion Estimation*
 
-We track a 2-D object with a **constant-velocity** Kalman filter using only noisy position measurements. The filter recovers a smooth trajectory and stable velocity estimate even when the true target suddenly changes direction.
+We track a 2-D object with a **constant-velocity** Kalman filter using only noisy position measurements.
+"""),
+        md(r"""## Analytical derivation
+
+**State.** $x = [p_x,\ p_y,\ v_x,\ v_y]^T \in \mathbb{R}^4$ — 2-D position and velocity.
+
+**Linear Gaussian model.** Constant-velocity dynamics over $\Delta t$:
+
+$$x_{t+1} \;=\; F x_t + w_t,\qquad w_t \sim \mathcal{N}(0, Q),\qquad F = \begin{bmatrix} 1 & 0 & \Delta t & 0 \\ 0 & 1 & 0 & \Delta t \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix}$$
+
+Process noise $Q$ models the deviation from constant velocity — bigger on the velocity components since accelerations can occur unmodeled.
+
+Observation: we measure position only,
+
+$$z_t \;=\; H x_t + v_t,\qquad v_t \sim \mathcal{N}(0, R),\qquad H = \begin{bmatrix} 1 & 0 & 0 & 0 \\ 0 & 1 & 0 & 0 \end{bmatrix}$$
+
+**Kalman filter recursion.** Maintain Gaussian belief $x \sim \mathcal{N}(\hat x, P)$.
+
+*Predict:*
+
+$$\hat x^- \;=\; F \hat x,\qquad P^- \;=\; F P F^T + Q$$
+
+*Update* (given measurement $z$):
+
+$$\text{innovation:}\quad y = z - H \hat x^-$$
+$$\text{innovation covariance:}\quad S = H P^- H^T + R$$
+$$\text{Kalman gain:}\quad K = P^- H^T S^{-1}$$
+$$\hat x \;=\; \hat x^- + K\,y$$
+$$P \;=\; (I - K H)\,P^-$$
+
+**Optimality.** Among all linear estimators, the KF minimizes MSE; for Gaussian noise it is also the *minimum-variance* unbiased estimator.
+
+**Handling unmodeled maneuvers.** When the true target suddenly changes velocity (as at $t = 5\,$s in this notebook), the constant-velocity model is wrong for a few steps. Because $Q$ allows for some unmodeled velocity drift, the filter "catches up" — but transient error appears. Increasing $Q$ on the velocity components trades steady-state smoothness for maneuver responsiveness.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| State transition $F$ | `F = np.array([[1,0,dt,0],[0,1,0,dt],[0,0,1,0],[0,0,0,1]])` |
+| Observation matrix $H$ | `H = np.array([[1,0,0,0],[0,1,0,0]])` |
+| Process noise $Q$ | `Q = np.diag([0.01, 0.01, 0.15, 0.15])` |
+| Predict $\hat x^- = F \hat x$ | `x_est = F @ x_est` |
+| Predict $P^- = F P F^T + Q$ | `P = F @ P @ F.T + Q` |
+| Innovation $y = z - H \hat x^-$ | `y = z[k] - H @ x_est` |
+| Innovation cov $S = H P H^T + R$ | `S = H @ P @ H.T + R_mat` |
+| Kalman gain $K = P H^T S^{-1}$ | `K = P @ H.T @ np.linalg.inv(S)` |
+| Update mean | `x_est = x_est + K @ y` |
+| Update cov $(I - K H) P$ | `P = (np.eye(4) - K @ H) @ P` |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1703,6 +2112,17 @@ The bicycle model approximates a car-like vehicle as two wheels on a centerline 
 $$\\dot{x} = v\\cos\\theta,\\quad \\dot{y} = v\\sin\\theta,\\quad \\dot\\theta = \\frac{v}{L}\\tan\\delta$$
 
 We sweep three steering schedules to illustrate the resulting trajectories.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| $\dot x = v\cos\theta$ | `state[0] += v * np.cos(state[2]) * dt` |
+| $\dot y = v\sin\theta$ | `state[1] += v * np.sin(state[2]) * dt` |
+| $\dot\theta = \frac{v}{L}\tan\delta$ | `state[2] += v * np.tan(delta) / L * dt` |
+| Three steering schedules: constant 0.2, constant 0.4, $0.3\sin(0.4 t)$ | `t1 = simulate(2.0, lambda _: 0.2); t2 = simulate(2.0, lambda _: 0.4); t3 = simulate(2.0, lambda t: 0.3*sin(0.4*t))` |
+
+Note: this is *kinematic* (instantaneous control authority over $v$ and $\delta$), not *dynamic* — there is no notion of tire slip, mass, or lateral force. Good enough for low-speed planning, breaks down at speed where slip matters.
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
@@ -1754,6 +2174,27 @@ def nb_20_symbolic_dynamics():
 We derive the equation of motion for a simple pendulum **symbolically** using SymPy, then convert the result into a fast numerical function with `lambdify` and integrate it.
 
 This mirrors MATLAB's Simscape / Symbolic Math Toolbox workflow: model in symbols, derive analytically, simulate numerically.
+
+### Analytical setup + compatibility
+
+Single pendulum hanging from a fixed pivot. Generalized coordinate $\\theta$ (angle from straight-down). Bob position $\\mathbf{r}(\\theta) = (L\\sin\\theta,\\ -L\\cos\\theta)$; velocity $\\dot{\\mathbf{r}} = L\\dot\\theta(\\cos\\theta,\\ \\sin\\theta)$.
+
+$$T = \\tfrac{1}{2} m\\|\\dot{\\mathbf{r}}\\|^2 = \\tfrac{1}{2} m L^2 \\dot\\theta^2,\\qquad V = m g y_\\text{bob} = -m g L \\cos\\theta$$
+
+Lagrangian $\\mathcal{L} = T - V$. Euler-Lagrange gives the closed-form
+
+$$\\boxed{\\;\\ddot\\theta = -\\frac{g}{L}\\sin\\theta\\;}$$
+
+| Math | Code |
+|---|---|
+| Bob position $(L\\sin\\theta,\\ -L\\cos\\theta)$ | `x_p = L * sp.sin(theta); y_p = -L * sp.cos(theta)` |
+| $T = \\tfrac12 m(\\dot x^2 + \\dot y^2)$ | `KE = sp.Rational(1,2) * m * (sp.diff(x_p, t)**2 + sp.diff(y_p, t)**2)` |
+| $V = m g\\,y_\\text{bob}$ | `PE = m * g * y_p` |
+| Lagrangian $\\mathcal{L} = T - V$ | `Lagrangian = sp.simplify(KE - PE)` |
+| Euler-Lagrange operator | `EL = sp.diff(sp.diff(L, theta_dot), t) - sp.diff(L, theta)` |
+| Solve for $\\ddot\\theta$ → $-(g/L)\\sin\\theta$ | `sol = sp.solve(EL, theta_ddot)[0]` |
+| Lambdify for numerics | `f = sp.lambdify((theta, m, L, g), sol, 'numpy')` |
+| RK4 integration | manual 4-stage Runge-Kutta in the integration loop |
 """),
         code("""import sympy as sp
 import numpy as np
