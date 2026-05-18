@@ -2,7 +2,33 @@
 
 A curated list of awesome libraries, frameworks, simulators, tutorials, and overall resources for the robotics community using **Python**. Inspired by and structured after [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) — same sections, Python ecosystem throughout.
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — see [`notebooks/`](notebooks/) for our growing collection (currently 10 fully runnable starter examples covering motion planning, localization, control, manipulation, UAV, perception, and mapping).
+
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To track 1-for-1 coverage of the MATLAB source repo, see [TRACKING.md](TRACKING.md).
+
+## Quick start (notebooks)
+
+```bash
+git clone https://github.com/d8maldon/awesome-python-robotics
+cd awesome-python-robotics
+pip install -r requirements.txt
+jupyter notebook notebooks/
+```
+
+| # | Notebook | Section |
+|---|---|---|
+| 01 | [A* path planning](notebooks/01_motion_planning_astar.ipynb) | Motion Planning |
+| 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning |
+| 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | Localization |
+| 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | Localization |
+| 05 | [LQR inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
+| 06 | [Pure pursuit path tracking](notebooks/06_path_tracking_pure_pursuit.ipynb) | Path Tracking |
+| 07 | [2-link inverse kinematics](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation |
+| 08 | [Quadrotor PID](notebooks/08_uav_quadrotor_pid.ipynb) | UAV |
+| 09 | [Lane detection with OpenCV](notebooks/09_perception_lane_detection.ipynb) | Automated Driving |
+| 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | Mapping |
+
+To regenerate from the source script: `python scripts/build_notebooks.py`
 
 ## Contents
 

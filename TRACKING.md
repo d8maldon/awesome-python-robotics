@@ -239,3 +239,95 @@ The following are **🔁 cross-refs** (mirrored as cross-refs in the README, not
 The following are **➖ N/A** (Simulink-specific concepts that don't translate to Python):
 - ROS: Simulink ROS support, Simulink ROS code generation
 - Hardware: MATLAB & Simulink Hardware Support Packages (a catch-all link to the MathWorks hardware index)
+
+---
+
+## Appendix A: PythonRobotics inventory
+
+[AtsushiSakai/PythonRobotics](https://github.com/AtsushiSakai/PythonRobotics) (29.5k★, active) is the broadest single Python project we reference. Below is the complete list of algorithms it ships, so you can see at a glance which MATLAB entries it already covers.
+
+### Localization (3)
+- Extended Kalman Filter localization
+- Particle filter localization
+- Histogram filter localization
+
+### Mapping (5)
+- Gaussian grid map
+- Ray casting grid map
+- Lidar to grid map
+- k-means object clustering
+- Rectangle fitting
+
+### SLAM (2)
+- Iterative Closest Point (ICP) matching
+- FastSLAM 1.0
+
+### Path Planning (18)
+- Dynamic Window Approach
+- Dijkstra
+- A*
+- D*
+- D* Lite
+- Potential Field
+- Grid-based coverage path planning
+- Particle Swarm Optimization (PSO)
+- Biased polar sampling
+- Lane sampling
+- Probabilistic Road-Map (PRM)
+- RRT*
+- RRT* with Reeds-Shepp path
+- LQR-RRT*
+- Quintic polynomials planning
+- Reeds Shepp planning
+- LQR-based path planning
+- Optimal Trajectory in a Frenet Frame
+
+### Path Tracking (6)
+- Move-to-a-pose control
+- Stanley control
+- Rear-wheel feedback control
+- LQR speed and steering control
+- Model Predictive speed and steering control
+- Nonlinear Model Predictive Control with C-GMRES
+
+### Arm Navigation (2)
+- N-joint arm to point control
+- Arm navigation with obstacle avoidance
+
+### Aerial Navigation (2)
+- Drone 3D trajectory following
+- Rocket powered landing
+
+### Bipedal (1)
+- Bipedal planner with inverted pendulum
+
+### Inverted Pendulum (2)
+- LQR control
+- MPC control
+
+### Mission Planning (2)
+- Behavior Tree
+- State Machine
+
+**Total: ~43 reference implementations.** Single-script algorithm demos with matplotlib animations — best for learning, not for production. We reference PythonRobotics in: Ground Vehicles, SLAM, Motion Planning, Motion Control, Manipulation, UAV, Aerial Navigation, and the Navigation Toolbox library entry.
+
+---
+
+## Appendix B: Our own implementations
+
+This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for our growing collection of runnable Jupyter notebooks.
+
+Starter set (in progress):
+
+| # | Notebook | Maps to MATLAB section |
+|---|---|---|
+| 1 | A* path planning | Motion Planning |
+| 2 | RRT in 2D | Motion Planning |
+| 3 | Extended Kalman Filter localization | Mapping, Localization and SLAM |
+| 4 | Particle filter localization | Mapping, Localization and SLAM |
+| 5 | LQR control of an inverted pendulum | Motion Control |
+| 6 | Pure pursuit path tracking | Motion Control |
+| 7 | Inverse kinematics for a 2-link arm | Manipulation |
+| 8 | Quadrotor altitude + attitude PID | UAV |
+| 9 | Lane detection with OpenCV | Automated Driving |
+| 10 | 2D occupancy grid from lidar scans | Mapping, Localization and SLAM |
