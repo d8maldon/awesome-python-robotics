@@ -43,6 +43,9 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - Mapping, Localization, and SLAM (*See Section Below*)
 - Motion Planning and Path Planning (*See Section Below*)
 - [PettingZoo](https://github.com/Farama-Foundation/PettingZoo) — Multi-agent RL environments useful for robot swarm research.
+- [Open-RMF](https://github.com/open-rmf/rmf) — Open Robotics Middleware Framework for multi-robot fleet management (warehouses, hospitals) with Python bindings.
+- [terrain-navigation](https://github.com/ethz-asl/terrain-navigation) — ETH Zurich ASL stack for safe terrain-aware navigation of off-road and aerial vehicles.
+- [agri_gaia](https://github.com/agri-gaia) — Open platform for agricultural robotics (in-field tractors, vineyard navigation, crop monitoring) with Python ROS components.
 
 ## Manipulation
 
@@ -78,6 +81,10 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Drake (Python bindings)](https://github.com/RobotLocomotion/drake) — Toyota Research Institute's planning/control/simulation toolbox with full `pydrake` API.
 - [MuJoCo (Python bindings)](https://github.com/google-deepmind/mujoco) — DeepMind's general-purpose physics simulator with first-class Python support.
 - [PyBullet](https://github.com/bulletphysics/bullet3) — Real-time physics simulation with URDF / SDF / MJCF import.
+- [OMPython](https://github.com/OpenModelica/OMPython) — Python interface to OpenModelica, the open-source equivalent of Simscape for symbolic multi-domain physical modeling (mechanical, hydraulic, electrical).
+- [BondGraphTools](https://github.com/BondGraphTools/BondGraphTools) — Symbolic bond-graph modeling of multi-physics systems in Python — closest analog to Simscape's acausal modeling paradigm.
+- [CadQuery](https://github.com/CadQuery/cadquery) — Parametric CAD scripted in Python; export to STEP/STL/URDF for robot modeling.
+- [onshape-to-robot](https://github.com/Rhoban/onshape-to-robot) — Convert Onshape CAD assemblies into URDF/SDF robot models from Python.
 
 ## Perception
 
@@ -89,6 +96,8 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [DepthAI Python](https://github.com/luxonis/depthai-python) — Luxonis OAK stereo + neural-inference camera Python API.
 - [pyrealsense2](https://github.com/IntelRealSense/librealsense) — Intel RealSense depth-camera Python bindings.
 - [filterpy](https://github.com/rlabbe/filterpy) — Kalman and Bayesian filters used widely for inertial sensor fusion.
+- [ByteTrack](https://github.com/ifzhang/ByteTrack) — High-performance multi-object tracker using detection-association by IoU + low-score recovery.
+- [DeepSORT-realtime](https://github.com/levan92/deep_sort_realtime) — Real-time Python implementation of DeepSORT for appearance-based multi-object tracking.
 
 ## Mapping, Localization and SLAM
 
@@ -123,6 +132,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [CasADi](https://github.com/casadi/casadi) — Symbolic framework for nonlinear optimization and optimal control.
 - [simple-pid](https://github.com/m-lundberg/simple-pid) — A minimal PID controller for embedded and prototyping use.
 - [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3) — RL algorithms (DDPG, SAC, PPO) commonly used for learned motion control.
+- [TCLab](https://github.com/jckantor/TCLab) — Temperature Control Lab and Python toolkit for hands-on multi-loop PID tuning and process control (BYU/Notre Dame curriculum).
 
 ## Unmanned Aerial Vehicles (UAV)
 
@@ -133,6 +143,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [crazyflie-lib-python](https://github.com/bitcraze/crazyflie-lib-python) — Official Python library for the Bitcraze Crazyflie nano-quad.
 - [AirSim Python API](https://github.com/microsoft/AirSim) — Microsoft AirSim drone & car simulator with Python client.
 - [Olympe (Parrot)](https://github.com/Parrot-Developers/olympe) — Parrot's Python controller framework for ANAFI and SPHINX simulator.
+- [JSBSim](https://github.com/JSBSim-Team/jsbsim) — Open-source 6-DoF flight dynamics model with Python bindings — the canonical Python tool for high-fidelity fixed-wing UAV simulation, waypoint following, and guidance-model approximation.
 
 ## Marine Robotics & AUV
 
@@ -157,6 +168,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [highway-env](https://github.com/Farama-Foundation/HighwayEnv) — Collection of environments for highway / intersection decision-making research.
 - [CVAT](https://github.com/cvat-ai/cvat) — Open-source annotation tool for images and video, widely used to label autonomous-driving datasets for segmentation and detection.
 - [AB3DMOT](https://github.com/xinshuoweng/AB3DMOT) — 3D multi-object tracking baseline for track-level fusion of radar/LiDAR/camera detections.
+- [OpenPCDet](https://github.com/open-mmlab/OpenPCDet) — OpenMMLab end-to-end LiDAR perception pipeline (point cloud → 3D detections → track list).
 
 ---
 
@@ -170,6 +182,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Webots](https://github.com/cyberbotics/webots) — Mature open-source robotics simulator with Python controllers.
 - [NVIDIA Isaac Lab](https://github.com/isaac-sim/IsaacLab) — GPU-accelerated robot learning framework built on Isaac Sim.
 - [Gazebo / gz-python](https://github.com/gazebosim/gz-sim) — Modern Gazebo (formerly Ignition) with Python bindings.
+- [dm_robotics](https://github.com/google-deepmind/dm_robotics) — DeepMind's curated robotics simulation environments and educational manipulation worlds built on MuJoCo.
 
 ## ROS and Middleware
 
@@ -179,6 +192,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 - [ros2cli](https://github.com/ros2/ros2cli) — Python implementation of the `ros2` command-line tools.
 - [Micro-ROS Python tooling](https://github.com/micro-ROS/micro_ros_setup) — Micro-ROS scaffolding scripts in Python for MCU targets.
 - [ros2_control](https://github.com/ros-controls/ros2_control) — Real-time control framework usable from Python via `controller_manager`.
+- [ROS 2 Python Tutorials](https://docs.ros.org/en/humble/Tutorials.html) — Official getting-started tutorials for writing ROS 2 nodes, services, and actions in Python.
 
 ## Hardware and Connectivity
 
