@@ -440,11 +440,81 @@ This is one of the classic benchmark problems in nonlinear control. We:
 3. solve the continuous-time algebraic Riccati equation for the LQR gain,
 4. integrate the full **nonlinear** closed-loop ODE from a small perturbation.
 """),
-        md("""## Generalized coordinates
+        md(r"""## Analytical derivation
 
-$q = [x,\\ \\theta_1,\\ \\theta_2,\\ \\theta_3]^T$ — cart position plus 3 link angles measured from world vertical. Upright equilibrium is $q = 0$.
+We derive the equations of motion **by hand first**, then check that the SymPy code below produces the same thing. Workflow: math → implementation, never the other way around.
 
-Each link is treated as a point mass at its midpoint (mass $m_i$, length $L_i$).
+### Generalized coordinates
+
+$q = [x,\ \theta_1,\ \theta_2,\ \theta_3]^T$ where $x$ is the cart position along the rail and $\theta_i$ is the angle of link $i$ measured from world vertical (so $\theta_i = 0$ means link $i$ is pointing straight up). Upright equilibrium is therefore $q = 0$.
+
+Each link is treated as a point mass $m_i$ at its midpoint, link length $L_i$, cart mass $M_c$.
+
+### Link kinematics
+
+The base of link 1 is at the cart, so $\mathbf{r}_{J_0} = (x,\ 0)$. The top of link $i$ (= base of link $i+1$) is
+
+$$\mathbf{r}_{J_i} \;=\; \mathbf{r}_{J_{i-1}} \;+\; L_i\,(\sin\theta_i,\ \cos\theta_i),\quad i=1,2,3$$
+
+and the **center of mass** of link $i$ is
+
+$$\mathbf{r}_{C_i} \;=\; \mathbf{r}_{J_{i-1}} \;+\; \tfrac{L_i}{2}\,(\sin\theta_i,\ \cos\theta_i).$$
+
+### Kinetic and potential energy
+
+Differentiating each $\mathbf{r}_{C_i}$ in time gives its CoM velocity $\dot{\mathbf{r}}_{C_i}$, a linear function of $\dot x$ and the $\dot\theta_j$. Total kinetic energy is the sum of point-mass terms (no rotational inertia for point masses):
+
+$$T \;=\; \tfrac{1}{2} M_c\,\dot x^2 \;+\; \sum_{i=1}^{3} \tfrac{1}{2} m_i\,\|\dot{\mathbf{r}}_{C_i}\|^2$$
+
+Total potential energy (only the $y$-component of each CoM matters):
+
+$$V \;=\; \sum_{i=1}^{3} m_i\, g\,(\mathbf{r}_{C_i})_y$$
+
+### Euler-Lagrange
+
+Lagrangian $\mathcal{L} = T - V$. For each generalized coordinate $q_k$:
+
+$$\frac{d}{dt}\frac{\partial \mathcal{L}}{\partial \dot q_k} \;-\; \frac{\partial \mathcal{L}}{\partial q_k} \;=\; Q_k$$
+
+with generalized forces $Q_x = u$ (the cart-input force) and $Q_{\theta_i} = 0$ (joints are passive).
+
+Collecting terms yields the **manipulator equation**
+
+$$\boxed{\;M(q)\,\ddot q + C(q,\dot q)\,\dot q + G(q) \;=\; B\,u,\qquad B = \begin{bmatrix}1\\0\\0\\0\end{bmatrix}\;}$$
+
+where $M(q)\in\mathbb{R}^{4\times 4}$ is symmetric positive-definite, $C(q,\dot q)$ holds Coriolis/centrifugal terms (quadratic in $\dot q$), and $G(q)$ is the gravity vector. The expanded scalar form fills several pages — which is why we let `sympy.physics.mechanics.LagrangesMethod` do the algebra below.
+
+### Linearization at upright
+
+Let $z = [q;\ \dot q]\in\mathbb{R}^8$ be the full state. At equilibrium $z^*=0$, $u^*=0$: $G(0)=0$ (the upright is a critical point of $V$), $C(0,0)=0$ (quadratic in $\dot q$). Linearizing $\ddot q = M^{-1}(-C\dot q - G + Bu)$:
+
+$$\ddot q \;\approx\; -M(0)^{-1}\,\nabla_q G(0)\,q \;+\; M(0)^{-1} B\,u$$
+
+Stacking with $\dot q = \dot q$:
+
+$$\dot z \;=\; \underbrace{\begin{bmatrix} 0 & I_4 \\ -M(0)^{-1}\nabla_q G(0) & 0 \end{bmatrix}}_{A}\,z \;+\; \underbrace{\begin{bmatrix} 0 \\ M(0)^{-1} B \end{bmatrix}}_{B_\ell}\,u$$
+
+The code below computes $A$ and $B_\ell$ by **central finite differences** of `nl_dyn(z, u)` at the origin — numerically equivalent to the formula above.
+
+### LQR
+
+Minimize $J = \int_0^\infty (z^T Q z + u^T R u)\,dt$. The optimal feedback is $u = -K z$ with
+
+$$K = R^{-1} B_\ell^T P, \qquad A^T P + P A \;-\; P B_\ell R^{-1} B_\ell^T P \;+\; Q \;=\; 0$$
+
+(continuous-time algebraic Riccati equation, solved by `scipy.linalg.solve_continuous_are`).
+
+### Compatibility check — math ↔ code
+
+| Step in derivation | Implementation below |
+|---|---|
+| CoM at $\mathbf{r}_{J_{i-1}} + \tfrac{L_i}{2}(\sin\theta_i,\cos\theta_i)$ | `P_com = joint.locatenew(..., (L_syms[i]/2)*A.y)` with `A` rotated by $\theta_i$ from world |
+| $T = \sum \tfrac12 m_i\|\dot{\mathbf{r}}_{C_i}\|^2$ | `KE = sum(b.kinetic_energy(N) for b in bodies)` |
+| $V = \sum m_i g(\mathbf{r}_{C_i})_y$ | `PE = sum(b.mass*g_s*b.point.pos_from(O).dot(N.y) for b in bodies)` |
+| Euler-Lagrange + manipulator form | `LagrangesMethod.form_lagranges_equations()` → `mass_matrix_full`, `forcing_full` |
+| Runtime $\ddot q = M^{-1}(-C\dot q - G + Bu)$ | `np.linalg.solve(M_fn(...), F_fn(...))` in `nl_dyn(z, u)` |
+| $A$, $B_\ell$ Jacobians at origin | central finite differences with $\varepsilon = 10^{-6}$ |
+| Riccati + LQR feedback | `solve_continuous_are` then $K = R^{-1} B_\ell^T P$ |
 """),
         code("""import numpy as np
 import sympy as sp
@@ -737,10 +807,76 @@ def nb_08_quadrotor_pid():
 **Section:** UAV · **Mirrors MATLAB:** *Approximate High-Fidelity UAV Models*
 
 We use a planar (2-D) quadrotor model with state `[z, ż, φ, φ̇]` (altitude, vertical velocity, roll, roll rate) and two control inputs: total **thrust** and **roll torque**.
+"""),
+        md(r"""## Analytical derivation
 
-A cascaded PD controller stabilizes both axes:
-- Outer altitude loop computes thrust to track `z_ref`.
-- Inner attitude loop computes torque to drive `φ → 0`.
+Derive the model from Newton-Euler, then design PD controllers analytically, then verify the closed loop is stable — only then write code.
+
+### Planar 2-D quadrotor model
+
+State $\mathbf{x} = [z,\ \dot z,\ \phi,\ \dot\phi]^T$ where $z$ is altitude and $\phi$ is roll angle from vertical (positive = tilted right). Inputs: total thrust $T$ along the body's "up" axis, and roll torque $\tau$ about the CoM.
+
+When the body is rolled by $\phi$, its up-axis in world coordinates is
+
+$$\hat{u}_b \;=\; (-\sin\phi,\ \cos\phi).$$
+
+### Newton-Euler
+
+Translation (Newton's 2nd law in world frame, gravity acts in $-\hat{y}$):
+
+$$m\,\ddot{\mathbf r}_{\text{world}} \;=\; T\hat{u}_b \;+\; m\mathbf{g} \;=\; (-T\sin\phi,\ T\cos\phi - mg)$$
+
+We focus on the altitude channel (the horizontal channel is decoupled at this fidelity), giving
+
+$$\boxed{\;\ddot z \;=\; \frac{T\cos\phi}{m} - g\;}$$
+
+Rotation (scalar in 2-D, since roll is the only rotational DoF):
+
+$$\boxed{\;\ddot\phi \;=\; \frac{\tau}{I}\;}$$
+
+where $I$ is the body's moment of inertia about the roll axis.
+
+### PD control laws
+
+Hover requires $T = mg$ (cancels gravity at $\phi = 0$). We use **gravity-feedforward + PD** on altitude, and pure PD on attitude:
+
+$$T \;=\; m\!\left(g \;+\; K_p^z(z_\text{ref} - z) \;-\; K_d^z\,\dot z\right)$$
+$$\tau \;=\; K_p^\phi(\phi_\text{ref} - \phi) \;-\; K_d^\phi\,\dot\phi$$
+
+### Closed-loop analysis (near hover)
+
+Substitute $T$ into the altitude equation and use $\cos\phi \approx 1$ for small angles:
+
+$$\ddot z \;=\; \frac{m\!\left(g + K_p^z(z_\text{ref}-z) - K_d^z \dot z\right)}{m} - g \;=\; K_p^z(z_\text{ref}-z) \;-\; K_d^z\,\dot z$$
+
+That is a standard linear 2nd-order system. With $\tilde z = z - z_\text{ref}$:
+
+$$\ddot{\tilde z} \;+\; K_d^z\,\dot{\tilde z} \;+\; K_p^z\,\tilde z \;=\; 0,\quad \omega_n^z = \sqrt{K_p^z},\quad \zeta^z = \frac{K_d^z}{2\sqrt{K_p^z}}$$
+
+Identically for attitude (with $I$ in the denominator):
+
+$$\ddot\phi \;+\; \frac{K_d^\phi}{I}\,\dot\phi \;+\; \frac{K_p^\phi}{I}\,\phi \;=\; 0,\quad \omega_n^\phi = \sqrt{\tfrac{K_p^\phi}{I}},\quad \zeta^\phi = \frac{K_d^\phi}{2\sqrt{K_p^\phi I}}$$
+
+With our chosen gains ($K_p^z=8$, $K_d^z=4.5$, $K_p^\phi=18$, $K_d^\phi=5.5$, $I=0.01$):
+
+- altitude: $\omega_n^z = 2.83$ rad/s, $\zeta^z = 0.80$ (well-damped)
+- attitude: $\omega_n^\phi = 42.4$ rad/s, $\zeta^\phi = 6.48$ (overdamped — sluggish but very robust)
+
+Both loops have all closed-loop poles in the open left-half plane → asymptotically stable around hover.
+
+### Numerical-integration constraint
+
+The attitude loop is **stiff** ($\omega_n^\phi = 42$ rad/s, much faster than altitude). Explicit Euler integration is stable iff $\Delta t \cdot \omega_n^\phi \lesssim 2$. We use $\Delta t = 0.005$ s here ($\Delta t \cdot \omega_n^\phi = 0.21$, safe). The animation in `scripts/build_animations.py` uses $\Delta t = 0.002$ s for margin around disturbances — and we discovered that $\Delta t = 0.01$ pushes the discrete eigenvalues outside the unit disk, blowing the sim up to NaN.
+
+### Compatibility check — math ↔ code
+
+| Derivation step | Code |
+|---|---|
+| $\ddot z = T\cos\phi/m - g$ | `z_ddot = thrust * np.cos(phi) / m - g` |
+| $\ddot\phi = \tau/I$ | `phi_ddot = torque / I` |
+| $T = m(g + K_p^z(z_\text{ref}-z) - K_d^z\dot z)$ | `thrust = m * (g + Kp_z*(z_ref - z) - Kd_z*z_dot)` |
+| $\tau = K_p^\phi(\phi_\text{ref}-\phi) - K_d^\phi\dot\phi$ | `torque = Kp_phi*(phi_ref - phi) - Kd_phi*phi_dot` |
+| $\Delta t < 2/\omega_n^\phi \approx 0.047$ | `dt = 0.005` (well below the bound) |
 """),
         code("""import numpy as np
 import matplotlib.pyplot as plt
