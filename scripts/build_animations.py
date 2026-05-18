@@ -222,57 +222,117 @@ def anim_pf():
     save(anim, "particle_filter", fps=15)
 
 
-# ----- 4. LQR pendulum -----
+# ----- 4. LQR triple-link inverted pendulum -----
 def anim_pendulum():
-    M, m, l, g = 1.0, 0.2, 0.5, 9.81
-    A = np.array([[0, 1, 0, 0],
-                  [0, 0, -m * g / M, 0],
-                  [0, 0, 0, 1],
-                  [0, 0, (M + m) * g / (M * l), 0]])
-    B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
-    Q = np.diag([1, 1, 10, 10]); R = np.array([[0.1]])
-    P = solve_continuous_are(A, B, Q, R)
-    K = np.linalg.inv(R) @ B.T @ P
+    """Triple-link inverted pendulum balanced by LQR.
 
-    def dyn(x, u):
-        pos, v, th, om = x
-        s, c = np.sin(th), np.cos(th)
-        den = M + m * s ** 2
-        acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
-        a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
-        return np.array([v, acc, om, a_th])
+    Re-derives the dynamics symbolically with sympy.physics.mechanics
+    (takes ~10-30 s) then animates the nonlinear closed-loop simulation.
+    """
+    import sympy as sp
+    import sympy.physics.mechanics as me
+    from scipy.integrate import solve_ivp
 
-    x = np.array([0.0, 0.0, 0.35, 0.0])
-    dt = 0.01
-    N = 600
-    xs = np.zeros((N, 4))
-    for i in range(N):
-        u = float(-(K @ x).item())
-        xs[i] = x
-        x = x + dt * dyn(x, u)
+    print("    (deriving triple-pendulum dynamics — this takes ~10-30 s)")
+    t_sym = me.dynamicsymbols._t
+    q  = me.dynamicsymbols('x th1 th2 th3')
+    qd = [qi.diff(t_sym) for qi in q]
+    u_sym = me.dynamicsymbols('u')
 
-    sub = 4
-    frames = xs[::sub]
+    Mc_s, g_s = sp.symbols('Mc g', positive=True)
+    m_syms = sp.symbols('m1 m2 m3', positive=True)
+    L_syms = sp.symbols('L1 L2 L3', positive=True)
 
-    fig, ax = plt.subplots(figsize=(8, 4.5))
-    ax.set_xlim(-2.5, 2.5); ax.set_ylim(-0.5, 1.2); ax.set_aspect("equal")
-    ax.axhline(0, color="k", lw=1)
-    cart = plt.Rectangle((-0.2, -0.1), 0.4, 0.2, color="steelblue")
+    Nf = me.ReferenceFrame('Nf')
+    O = me.Point('O'); O.set_vel(Nf, 0)
+    Pc = O.locatenew('Pc', q[0]*Nf.x)
+    Pc.set_vel(Nf, qd[0]*Nf.x)
+    cart = me.Particle('Cart', Pc, Mc_s)
+
+    bodies = [cart]
+    joint = Pc
+    for i in range(3):
+        A = Nf.orientnew(f'A{i+1}', 'Axis', [q[i+1], Nf.z])
+        A.set_ang_vel(Nf, qd[i+1]*Nf.z)
+        P_com = joint.locatenew(f'Pc{i+1}', (L_syms[i]/2)*A.y)
+        P_com.v2pt_theory(joint, Nf, A)
+        bodies.append(me.Particle(f'L{i+1}', P_com, m_syms[i]))
+        next_j = joint.locatenew(f'J{i+1}', L_syms[i]*A.y)
+        next_j.v2pt_theory(joint, Nf, A)
+        joint = next_j
+
+    KE = sum(b.kinetic_energy(Nf) for b in bodies)
+    PE = sum(b.mass * g_s * b.point.pos_from(O).dot(Nf.y) for b in bodies)
+    L_lag = KE - PE
+
+    LM = me.LagrangesMethod(L_lag, q, forcelist=[(Pc, u_sym*Nf.x)], frame=Nf)
+    LM.form_lagranges_equations()
+
+    Lk = 0.3
+    params = {Mc_s: 1.0, g_s: 9.81,
+              m_syms[0]: 0.1, m_syms[1]: 0.1, m_syms[2]: 0.1,
+              L_syms[0]: Lk, L_syms[1]: Lk, L_syms[2]: Lk}
+    M_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.mass_matrix_full.subs(params), 'numpy')
+    F_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.forcing_full.subs(params), 'numpy')
+
+    def nl_dyn(z, u_val):
+        args = list(z) + [u_val]
+        Mm = np.asarray(M_fn(*args), dtype=float)
+        Ff = np.asarray(F_fn(*args), dtype=float).flatten()
+        return np.linalg.solve(Mm, Ff)
+
+    eps = 1e-6
+    Ax = np.zeros((8, 8)); Bx = np.zeros((8, 1))
+    z_eq = np.zeros(8)
+    for i in range(8):
+        zp = z_eq.copy(); zp[i] += eps
+        zm = z_eq.copy(); zm[i] -= eps
+        Ax[:, i] = (nl_dyn(zp, 0.0) - nl_dyn(zm, 0.0)) / (2 * eps)
+    Bx[:, 0] = (nl_dyn(z_eq, eps) - nl_dyn(z_eq, -eps)) / (2 * eps)
+
+    Q = np.diag([1.0, 200.0, 200.0, 200.0, 1.0, 1.0, 1.0, 1.0])
+    R_lqr = np.array([[0.05]])
+    P_riccati = solve_continuous_are(Ax, Bx, Q, R_lqr)
+    K = np.linalg.inv(R_lqr) @ Bx.T @ P_riccati
+
+    def closed_loop(_, z):
+        return nl_dyn(z, float(-(K @ z).item()))
+
+    z0 = np.array([0.0, 0.04, -0.02, 0.03, 0, 0, 0, 0])
+    sol = solve_ivp(closed_loop, [0, 4.0], z0, dense_output=True,
+                    rtol=1e-7, atol=1e-9, max_step=0.005)
+    t_arr = np.linspace(0, 4.0, 200)
+    states = sol.sol(t_arr).T
+
+    def joints(state):
+        x = state[0]
+        th = state[1:4]
+        pts = [(x, 0.0)]
+        for i in range(3):
+            pts.append((pts[-1][0] + Lk * np.sin(th[i]),
+                        pts[-1][1] + Lk * np.cos(th[i])))
+        return np.array(pts)
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.set_xlim(-0.9, 0.9); ax.set_ylim(-0.15, 1.1); ax.set_aspect("equal")
+    ax.axhline(0, color="brown", lw=2)
+    cart = plt.Rectangle((-0.15, -0.05), 0.3, 0.1, color="steelblue")
     ax.add_patch(cart)
-    rod, = ax.plot([], [], "k-", lw=3)
-    bob, = ax.plot([], [], "ro", ms=15)
-    ax.set_title("LQR Inverted Pendulum")
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
+    link_lines = [ax.plot([], [], color=c, lw=4, marker="o", ms=6)[0] for c in colors]
+    ax.set_title("LQR — Triple-Link Inverted Pendulum")
     ax.set_xticks([]); ax.set_yticks([])
 
     def update(i):
-        pos, _, th, _ = frames[i]
-        cart.set_xy((pos - 0.2, -0.1))
-        bx, by = pos + l * np.sin(th), l * np.cos(th)
-        rod.set_data([pos, bx], [0, by])
-        bob.set_data([bx], [by])
-        return [cart, rod, bob]
+        s = states[i]
+        pts = joints(s)
+        cart.set_xy((s[0] - 0.15, -0.05))
+        for k in range(3):
+            link_lines[k].set_data([pts[k, 0], pts[k+1, 0]],
+                                    [pts[k, 1], pts[k+1, 1]])
+        return [cart] + link_lines
 
-    anim = FuncAnimation(fig, update, frames=len(frames), interval=40, blit=False)
+    anim = FuncAnimation(fig, update, frames=len(states), interval=50, blit=False)
     save(anim, "lqr_pendulum", fps=20)
 
 
@@ -327,22 +387,22 @@ def anim_quadrotor():
     Kp_z, Kd_z = 8, 4.5
     Kp_phi, Kd_phi = 18, 5.5
     x = np.array([0.0, 0.0, 0.3, 0.0])
-    dt = 0.01
-    N = 500
+    dt = 0.002                       # smaller dt — was 0.01, too coarse for stiff phi loop (Kp/I=1800)
+    N = 2500                         # 5 s of sim
     hist = np.zeros((N, 4))
     setpts = np.zeros(N)
     for i in range(N):
-        z_set = 1.6 + 0.5 * np.sin(0.025 * i)
+        z_set = 1.6 + 0.5 * np.sin(0.005 * i)
         setpts[i] = z_set
         z, zd, phi, pd = x
         T = m * (g + Kp_z * (z_set - z) - Kd_z * zd)
         tau = Kp_phi * (0 - phi) - Kd_phi * pd
-        if i in (120, 280, 410):       # periodic roll disturbance
-            x[3] += 1.0
+        if i in (600, 1400, 2100):        # periodic roll disturbance
+            x[3] += 0.8
         x = x + dt * np.array([zd, T * np.cos(phi) / m - g, pd, tau / I_inertia])
         hist[i] = x
 
-    sub = 4
+    sub = 20                                # 125 frames
     fig, ax = plt.subplots(figsize=(6, 6))
     ax.set_xlim(-0.8, 0.8); ax.set_ylim(0, 3)
     ax.axhline(0, color="brown", lw=2)
@@ -350,7 +410,6 @@ def anim_quadrotor():
     body, = ax.plot([], [], "k-", lw=4)
     r_left, = ax.plot([], [], "bo", ms=10)
     r_right, = ax.plot([], [], "bo", ms=10)
-    trail, = ax.plot([], [], "g-", alpha=0.5, lw=1.5)
     ax.set_title("Quadrotor PID — moving setpoint + roll kicks")
     ax.set_xticks([]); ax.legend(loc="upper right")
     L = 0.3
@@ -362,12 +421,11 @@ def anim_quadrotor():
         body.set_data([-dx, dx], [z - dy, z + dy])
         r_left.set_data([-dx], [z - dy])
         r_right.set_data([dx], [z + dy])
-        trail.set_data(np.full(idx // sub + 1, 0.0), hist[:idx + 1:sub, 0])
         setpt_line.set_data([-0.7, 0.7], [setpts[idx], setpts[idx]])
-        return [body, r_left, r_right, trail, setpt_line]
+        return [body, r_left, r_right, setpt_line]
 
-    anim = FuncAnimation(fig, update, frames=N // sub, interval=50, blit=False)
-    save(anim, "quadrotor_pid", fps=20)
+    anim = FuncAnimation(fig, update, frames=N // sub, interval=40, blit=False)
+    save(anim, "quadrotor_pid", fps=25)
 
 
 # ----- 7. 2-link IK tracing circle -----

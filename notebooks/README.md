@@ -19,7 +19,7 @@ jupyter notebook
 | 02 | [RRT](02_motion_planning_rrt.ipynb) | Motion Planning | Rapidly-exploring Random Tree with 10% goal bias |
 | 03 | [Extended Kalman Filter](03_localization_ekf.ipynb) | Localization | EKF for unicycle robot with range-bearing landmarks |
 | 04 | [Particle filter](04_localization_particle_filter.ipynb) | Localization | Monte Carlo Localization with systematic resampling |
-| 05 | [LQR inverted pendulum](05_motion_control_pendulum_lqr.ipynb) | Motion Control | Continuous-time LQR cart-pole stabilization |
+| 05 | [LQR triple-link pendulum](05_motion_control_pendulum_lqr.ipynb) | Motion Control | Continuous-time LQR balancing 3 serial links via SymPy-derived dynamics (8-D state, 1 input) |
 | 06 | [Pure pursuit](06_path_tracking_pure_pursuit.ipynb) | Path Tracking | Geometric path tracking for a unicycle |
 | 07 | [2-link analytical IK](07_manipulation_ik_2link.ipynb) | Manipulation | Closed-form inverse kinematics for planar 2R arm |
 | 08 | [Quadrotor PID](08_uav_quadrotor_pid.ipynb) | UAV | Altitude + roll PID for a planar quadrotor |

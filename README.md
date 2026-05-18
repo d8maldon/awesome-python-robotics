@@ -33,8 +33,8 @@ Animated GIFs from selected notebooks — click through to the full notebook wit
 </td>
 <td align="center">
 <a href="notebooks/05_motion_control_pendulum_lqr.ipynb"><img src="media/lqr_pendulum.gif" width="100%"/></a><br>
-<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">LQR Inverted Pendulum</a></b><br>
-<sub>Continuous-time LQR balances a cart-pole from a 20° perturbation back to upright.</sub>
+<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">LQR — Triple-Link Inverted Pendulum</a></b><br>
+<sub>Three links, one cart force. 8-D state. Sympy derives the nonlinear EOMs; LQR balances all three simultaneously.</sub>
 </td>
 </tr>
 <tr>
@@ -90,7 +90,7 @@ jupyter notebook notebooks/
 | 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning |
 | 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | Localization |
 | 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | Localization |
-| 05 | [LQR inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
+| 05 | [LQR triple-link inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
 | 06 | [Pure pursuit path tracking](notebooks/06_path_tracking_pure_pursuit.ipynb) | Path Tracking |
 | 07 | [2-link analytical IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation |
 | 08 | [Quadrotor PID](notebooks/08_uav_quadrotor_pid.ipynb) | UAV |

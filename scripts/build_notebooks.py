@@ -423,72 +423,185 @@ plt.show()
 
 
 # ---------------------------------------------------------------------------
-# 05. LQR inverted pendulum
+# 05. LQR control of a TRIPLE-link inverted pendulum on a cart
 # ---------------------------------------------------------------------------
 def nb_05_lqr_pendulum():
     cells = [
-        md("""# 05 — LQR Control of an Inverted Pendulum on a Cart
+        md("""# 05 — LQR Control of a **Triple-Link** Inverted Pendulum on a Cart
 
-**Section:** Motion Control · **Mirrors MATLAB:** *Multi-Loop PI Tuning for Robotic Arm* (LQR replaces PID here)
+**Section:** Motion Control · **Mirrors MATLAB:** *Multi-Loop PI Tuning for Robotic Arm* — but harder.
 
-We balance a pendulum on a cart by linearizing around the upright equilibrium and solving the **continuous-time algebraic Riccati equation** for the optimal state-feedback gain `K = R⁻¹ Bᵀ P`.
+Three pendulum links serially attached to each other on top of a cart. You can only push the cart horizontally. The cart must be moved cleverly so all three links balance simultaneously upright. **One actuator, 4 degrees of freedom (8-dimensional state)** — strongly underactuated.
 
-Simulation uses the full **nonlinear** cart-pole dynamics — LQR is computed once from the linearization and remains stable over a wide region.
+This is one of the classic benchmark problems in nonlinear control. We:
+
+1. derive the full nonlinear equations of motion **symbolically** with `sympy.physics.mechanics`,
+2. linearize around the upright equilibrium,
+3. solve the continuous-time algebraic Riccati equation for the LQR gain,
+4. integrate the full **nonlinear** closed-loop ODE from a small perturbation.
+"""),
+        md("""## Generalized coordinates
+
+$q = [x,\\ \\theta_1,\\ \\theta_2,\\ \\theta_3]^T$ — cart position plus 3 link angles measured from world vertical. Upright equilibrium is $q = 0$.
+
+Each link is treated as a point mass at its midpoint (mass $m_i$, length $L_i$).
 """),
         code("""import numpy as np
-import matplotlib.pyplot as plt
+import sympy as sp
+import sympy.physics.mechanics as me
 from scipy.linalg import solve_continuous_are
+from scipy.integrate import solve_ivp
+import matplotlib.pyplot as plt
 
-M, m, l, g = 1.0, 0.2, 0.5, 9.81
-
-# Pendulum-UP convention: theta = 0 is the unstable upright equilibrium.
-# Linearization at theta = 0:
-A = np.array([[0, 1,             0, 0],
-              [0, 0, -m * g / M,  0],
-              [0, 0,             0, 1],
-              [0, 0,  (M + m) * g / (M * l), 0]])
-B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
-
-Q = np.diag([1.0, 1.0, 10.0, 10.0])
-R = np.array([[0.1]])
-
-P = solve_continuous_are(A, B, Q, R)
-K = np.linalg.inv(R) @ B.T @ P
-print("LQR gain K =", K.flatten())
+print("Deriving triple-pendulum dynamics symbolically (~10-30 s)...")
 """),
-        code("""def nonlinear_dyn(x, u):
-    # Pendulum-UP nonlinear cart-pole dynamics (theta = 0 is upright)
-    pos, vel, th, om = x
-    s, c = np.sin(th), np.cos(th)
-    den = M + m * s ** 2
-    acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
-    a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
-    return np.array([vel, acc, om, a_th])
+        code("""t = me.dynamicsymbols._t
+q  = me.dynamicsymbols('x th1 th2 th3')
+qd = [qi.diff(t) for qi in q]
+u_sym = me.dynamicsymbols('u')
 
+Mc_s, g_s = sp.symbols('Mc g', positive=True)
+m_syms = sp.symbols('m1 m2 m3', positive=True)
+L_syms = sp.symbols('L1 L2 L3', positive=True)
 
-x = np.array([0.0, 0.0, 0.35, 0.0])  # start ~20° off upright
-T = 5.0; dt = 0.005
-N = int(T / dt)
-xs = np.zeros((N, 4)); us = np.zeros(N)
-for i in range(N):
-    u = float(-(K @ x).item())
-    us[i] = u
-    xs[i] = x
-    x = x + dt * nonlinear_dyn(x, u)
+N = me.ReferenceFrame('N')
+O = me.Point('O'); O.set_vel(N, 0)
+
+Pc = O.locatenew('Pc', q[0]*N.x)
+Pc.set_vel(N, qd[0]*N.x)
+cart = me.Particle('Cart', Pc, Mc_s)
+
+bodies = [cart]
+joint = Pc
+for i in range(3):
+    A = N.orientnew(f'A{i+1}', 'Axis', [q[i+1], N.z])
+    A.set_ang_vel(N, qd[i+1]*N.z)
+    P_com = joint.locatenew(f'Pc{i+1}', (L_syms[i]/2)*A.y)
+    P_com.v2pt_theory(joint, N, A)
+    bodies.append(me.Particle(f'L{i+1}', P_com, m_syms[i]))
+    next_j = joint.locatenew(f'J{i+1}', L_syms[i]*A.y)
+    next_j.v2pt_theory(joint, N, A)
+    joint = next_j
+
+KE = sum(b.kinetic_energy(N) for b in bodies)
+PE = sum(b.mass * g_s * b.point.pos_from(O).dot(N.y) for b in bodies)
+L_lag = KE - PE
+
+LM = me.LagrangesMethod(L_lag, q, forcelist=[(Pc, u_sym*N.x)], frame=N)
+LM.form_lagranges_equations()
+M_mat = LM.mass_matrix_full       # 8x8 symbolic
+F_vec = LM.forcing_full           # 8x1 symbolic
+print(f"M is {M_mat.shape}, F is {F_vec.shape}")
 """),
-        code("""t = np.arange(N) * dt
-fig, axs = plt.subplots(2, 2, figsize=(11, 6))
-labels = ['cart position (m)', 'cart velocity (m/s)', 'pendulum angle (rad)', 'angular velocity (rad/s)']
-for k, ax in enumerate(axs.flat):
-    if k < 4:
-        ax.plot(t, xs[:, k])
-        ax.set_title(labels[k]); ax.set_xlabel('time (s)'); ax.grid()
+        code("""# Substitute numerical parameters
+params = {Mc_s: 1.0, g_s: 9.81,
+          m_syms[0]: 0.1, m_syms[1]: 0.1, m_syms[2]: 0.1,
+          L_syms[0]: 0.3, L_syms[1]: 0.3, L_syms[2]: 0.3}
 
-fig2, ax2 = plt.subplots(figsize=(11, 3))
-ax2.plot(t, us, 'r')
-ax2.set_title('Control input (N)'); ax2.set_xlabel('time (s)'); ax2.grid()
+M_num = M_mat.subs(params)
+F_num = F_vec.subs(params)
+
+all_vars = list(q) + list(qd) + [u_sym]
+M_fn = sp.lambdify(all_vars, M_num, 'numpy')
+F_fn = sp.lambdify(all_vars, F_num, 'numpy')
+
+
+def nl_dyn(state, u_val):
+    args = list(state) + [u_val]
+    Mm = np.asarray(M_fn(*args), dtype=float)
+    Ff = np.asarray(F_fn(*args), dtype=float).flatten()
+    return np.linalg.solve(Mm, Ff)
+"""),
+        code("""# Linearize around upright (z=0, u=0) by central finite differences
+eps = 1e-6
+z_eq = np.zeros(8)
+A_lin = np.zeros((8, 8))
+B_lin = np.zeros((8, 1))
+for i in range(8):
+    zp = z_eq.copy(); zp[i] += eps
+    zm = z_eq.copy(); zm[i] -= eps
+    A_lin[:, i] = (nl_dyn(zp, 0.0) - nl_dyn(zm, 0.0)) / (2 * eps)
+B_lin[:, 0] = (nl_dyn(z_eq, eps) - nl_dyn(z_eq, -eps)) / (2 * eps)
+
+eigs = np.linalg.eigvals(A_lin)
+n_unstable = int(np.sum(eigs.real > 1e-6))
+print(f"Open-loop eigenvalues (real parts): {np.sort(eigs.real)[::-1].round(2)}")
+print(f"Unstable modes: {n_unstable}  (each link is its own inverted pendulum)")
+"""),
+        code("""# LQR design
+Q = np.diag([1.0, 200.0, 200.0, 200.0,
+             1.0,   1.0,   1.0,   1.0])
+R = np.array([[0.05]])
+
+P = solve_continuous_are(A_lin, B_lin, Q, R)
+K = np.linalg.inv(R) @ B_lin.T @ P
+print(f"LQR gain K = {K.flatten().round(2)}")
+
+cl_eigs = np.linalg.eigvals(A_lin - B_lin @ K)
+print(f"Closed-loop max real part: {cl_eigs.real.max():.3f}  (must be < 0 for stability)")
+"""),
+        code("""# Simulate nonlinear closed loop from a small perturbation (< 3° per link)
+def closed_loop(t_val, z):
+    u_val = float(-(K @ z).item())
+    return nl_dyn(z, u_val)
+
+
+z0 = np.array([0.0, 0.04, -0.02, 0.03, 0, 0, 0, 0])
+sol = solve_ivp(closed_loop, [0, 4.0], z0, dense_output=True,
+                rtol=1e-7, atol=1e-9, max_step=0.005)
+print(f"Integration: {'success' if sol.success else 'FAILED'}  ({sol.t.size} steps)")
+t_arr = np.linspace(0, 4.0, 500)
+states = sol.sol(t_arr).T
+"""),
+        code("""fig, axs = plt.subplots(3, 1, figsize=(11, 8))
+axs[0].plot(t_arr, states[:, 0])
+axs[0].set_ylabel('cart x (m)'); axs[0].grid()
+
+for i, c in enumerate(['#1f77b4', '#ff7f0e', '#2ca02c']):
+    axs[1].plot(t_arr, np.degrees(states[:, 1 + i]), c=c, label=f'theta{i+1}')
+axs[1].axhline(0, color='k', lw=0.5)
+axs[1].set_ylabel('link angles (deg)'); axs[1].legend(); axs[1].grid()
+
+u_hist = np.array([-(K @ s).item() for s in states])
+axs[2].plot(t_arr, u_hist, color='r')
+axs[2].set_ylabel('control u (N)'); axs[2].set_xlabel('t (s)'); axs[2].grid()
 plt.tight_layout()
 plt.show()
+"""),
+        code("""# Six snapshots of the triple pendulum as LQR drives it back to upright
+def joints(state, L=0.3):
+    x = state[0]
+    th = state[1:4]
+    pts = [(x, 0.0)]
+    for i in range(3):
+        pts.append((pts[-1][0] + L * np.sin(th[i]),
+                    pts[-1][1] + L * np.cos(th[i])))
+    return np.array(pts)
+
+
+fig, axs = plt.subplots(1, 6, figsize=(16, 4), sharey=True)
+sample_t = np.linspace(0, 4.0, 6)
+colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+for ax, ts in zip(axs, sample_t):
+    s = sol.sol(ts)
+    pts = joints(s)
+    ax.axhline(0, color='brown', lw=1)
+    ax.add_patch(plt.Rectangle((s[0] - 0.15, -0.05), 0.3, 0.1, color='steelblue'))
+    for i in range(3):
+        ax.plot([pts[i, 0], pts[i + 1, 0]],
+                [pts[i, 1], pts[i + 1, 1]],
+                color=colors[i], lw=4, marker='o', ms=7)
+    ax.set_xlim(-0.8, 0.8); ax.set_ylim(-0.2, 1.2)
+    ax.set_aspect('equal'); ax.set_title(f't = {ts:.2f}s')
+plt.tight_layout()
+plt.show()
+"""),
+        md("""## Notes
+
+- **Open-loop is triply unstable.** Each link has an unstable mode near $\\sqrt{g/L}$. LQR pushes all three to the left half-plane through a single cart input — the gain captures exactly that coordination via the cross terms.
+- **Only the linearization is used to design K.** The closed loop runs the *full nonlinear* dynamics; the LQR is provably optimal only near upright but works well in a region of attraction.
+- **From large initial perturbations LQR fails** because the linearization breaks down. Real triple-pendulum balancers use energy-based swing-up (Spong's method) to bring the state into the LQR's region of attraction.
+- **Underactuated.** 4 DoFs, 1 input — the cart has to wiggle in a coordinated way to right all three links.
 """),
     ]
     write("05_motion_control_pendulum_lqr.ipynb", cells)
