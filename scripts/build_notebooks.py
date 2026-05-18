@@ -45,6 +45,17 @@ This notebook implements **A\\*** search on a 2-D occupancy grid with 8-connecte
 
 We use the **Euclidean distance** heuristic, which is admissible (never overestimates) for 8-connected grids with unit-or-√2 edge costs.
 """),
+        md("""## Intuition — what's actually going on?
+
+Imagine you have a top-down view of a maze and you want the shortest path from room A to room B. The naive thing to do is explore *every* room — that works, but it's slow. A better idea: at every step, prefer to explore the room that looks closest to the goal. That's the whole trick behind A\\*.
+
+Each room (cell in our grid) gets two numbers:
+
+- **`g`** — how far you've actually walked from the start to get here.
+- **`h`** — how far you *think* you still have to go (a guess, like straight-line distance).
+
+A\\* always picks next the room whose `f = g + h` is smallest — i.e. the cheapest *total trip* so far. As long as your guess `h` never **overestimates** the true remaining distance (this property is called *admissibility*), A\\* is guaranteed to return the genuinely shortest path the first time it pops the goal from the queue. The math below proves this.
+"""),
         md(r"""## Analytical derivation
 
 **Problem.** Given a graph $G = (V, E)$ with non-negative edge weights $c: E \to \mathbb{R}_{\ge 0}$, a start node $s$, and a goal node $t$, find $\pi = (s = v_0, v_1, \ldots, v_k = t)$ minimizing $\sum_{i=1}^k c(v_{i-1}, v_i)$.
@@ -173,6 +184,19 @@ def nb_02_rrt():
 
 RRT incrementally builds a tree by sampling random points in the configuration space, finding the nearest tree node, and growing a small step toward the sample.
 """),
+        md("""## Intuition — what's actually going on?
+
+Suppose you have to plan a path through a cluttered space, and the space is *high-dimensional* (think of a robot arm with 7 joints — that's a 7-D space, way too big for a grid). A\\* would blow up. RRT (Rapidly-exploring Random Tree) is the clever workaround.
+
+The trick is **biased random exploration**: throw random darts at the configuration space, then for each dart, find the closest point on your existing tree and grow a small branch toward it. Because you're sampling uniformly, the tree naturally pushes outward into unexplored regions — like roots spreading through soil.
+
+Two practical twists:
+
+- **Goal bias**: every now and then (say 10% of the time), aim the dart *at the goal* instead of randomly. Without this, RRT would explore forever without ever bothering to actually reach the goal.
+- **Collision check**: only add a branch if the line from the nearest tree node to the new dart is collision-free.
+
+RRT finds *a* path with probability 1 as time → ∞, but not necessarily the *shortest* one (that needs RRT\\*, which rewires the tree as it grows).
+"""),
         md(r"""## Analytical derivation
 
 **Algorithm.** Let $\mathcal{X} \subset \mathbb{R}^d$ be the configuration space and $\mathcal{X}_\text{free} \subseteq \mathcal{X}$ the collision-free subset. We grow a tree $\mathcal{T} = (V, E)$ rooted at $x_\text{init}$:
@@ -293,6 +317,14 @@ def nb_03_ekf():
 **Section:** Localization · **Mirrors MATLAB:** *Monte Carlo Localization* (similar problem, EKF approach)
 
 We track the pose `[x, y, θ]` of a unicycle robot moving in a circle, using **range + bearing** measurements to known landmarks. The EKF linearizes the nonlinear motion and observation models around the current estimate at each step.
+"""),
+        md("""## Intuition — what's actually going on?
+
+You're a robot that *thinks* it knows where it is, but isn't 100% sure. Every step you take, your uncertainty grows (wheels slip, sensors are noisy). But when you see a landmark whose true location you know, you can correct yourself.
+
+The **Kalman filter** is the mathematically optimal way to combine these two sources of information — "where I think I am" (prediction from motion) and "what I just saw" (observation). It does this by maintaining not just a best-guess pose but also a **covariance matrix** that says how confident the robot is in each direction.
+
+The **Extended** Kalman Filter (EKF) is the same idea, except the motion and observation equations are **nonlinear** (robot pose includes a heading angle, observations are range + bearing). The EKF handles this by linearizing — taking partial derivatives (*Jacobians*) at the current estimate at every step. It's not optimal anymore (no Bayes-optimal closed form exists for nonlinear systems), but it's fast and works well in practice for smooth nonlinearities.
 """),
         md("""## Motion and observation models
 
@@ -419,6 +451,14 @@ def nb_04_particle_filter():
 
 The particle filter represents the belief over robot pose with a set of weighted samples (particles).
 """),
+        md("""## Intuition — what's actually going on?
+
+The EKF (notebook 03) assumes your belief about your pose looks like a single Gaussian "blob" — one peak with elliptical uncertainty. That breaks down if you're, say, in a long hallway where you could be anywhere along it — the true belief has multiple peaks.
+
+The **particle filter** drops the Gaussian assumption and represents the belief with hundreds or thousands of *samples* (particles), each one a hypothesis "maybe I'm here". After each motion, you nudge every particle through the motion model with a bit of noise. After each observation, you ask each particle "how likely was that observation if I were you?" and weight it accordingly. Then you **resample** — particles with high weight reproduce, particles with low weight die. Over time the cloud collapses onto the true pose.
+
+It's basically Darwinian evolution for pose hypotheses. The animation in the README shows it beautifully — a cloud of green dots collapses onto the true trajectory as observations come in.
+"""),
         md(r"""## Analytical derivation
 
 We want to recursively estimate $p(x_t \mid z_{1:t}, u_{1:t})$ where $x_t$ is the pose, $u_t$ is the control input, and $z_t$ is the observation. Bayes-filter recursion:
@@ -535,6 +575,18 @@ This is one of the classic benchmark problems in nonlinear control. We:
 2. linearize around the upright equilibrium,
 3. solve the continuous-time algebraic Riccati equation for the LQR gain,
 4. integrate the full **nonlinear** closed-loop ODE from a small perturbation.
+"""),
+        md("""## Intuition — what's actually going on?
+
+Balancing a broomstick on your palm is hard. Balancing a broomstick that has a smaller broomstick balanced on its top is *much* harder. Now imagine a third broomstick on top of that — and your only way to stabilize the whole tower is by **sliding your palm horizontally**. That's the triple-link inverted pendulum on a cart.
+
+Why is this so famous in controls?
+
+- The system is **underactuated** — 4 degrees of freedom (cart position + 3 angles), only 1 actuator (horizontal force on the cart). You can't directly control the angles; you have to "trick" them into balancing by moving the cart cleverly.
+- Each pendulum is independently unstable. Stabilizing one alone is already tricky; stabilizing three simultaneously requires the controller to coordinate them via the cart input.
+- **LQR** (Linear Quadratic Regulator) gives the mathematically optimal feedback gain assuming the system is *linear* and you want to minimize a quadratic cost. The trick is: even though our true dynamics are wildly nonlinear, near the upright equilibrium they're well-approximated by a linear system. We design LQR on that linearization, then deploy it on the real nonlinear system — and it works (within a small region of attraction).
+
+For larger initial tilts, LQR fails because the linearization stops being accurate. Real systems use **energy-based swing-up** to first get the pendulum near upright, then hand off to LQR for the precision catch.
 """),
         md(r"""## Analytical derivation
 
@@ -784,6 +836,14 @@ def nb_06_pure_pursuit():
 
 Pure pursuit is a geometric controller that finds a point on the reference path at a fixed **look-ahead distance** ahead of the robot, then computes the curvature that would carry the robot to that point in a single arc.
 """),
+        md("""## Intuition — what's actually going on?
+
+You're driving a car. You see the road curving ahead of you. You don't steer aimed at the *closest* point on the road (you'd swerve constantly) — you aim at a point a comfortable distance **ahead** on the road, and steer toward that. That's pure pursuit.
+
+The parameter that controls the feel is the **look-ahead distance** `Ld`. Short `Ld` means aggressive, twitchy tracking. Long `Ld` means smooth driving but you cut corners. Most production self-driving cars adapt `Ld` to speed (longer at highway speeds, shorter when parking).
+
+The math turns out to be beautifully clean: aim a circular arc from your current pose to the look-ahead point, and the curvature of that arc is $\\kappa = 2\\sin(\\alpha)/L_d$ where $\\alpha$ is the angle to the look-ahead point. You command angular velocity $\\omega = v \\kappa$. That's it.
+"""),
         md(r"""## Analytical derivation
 
 **Geometric setup.** Place the robot at the origin with heading along $+\hat x$. The target point $(x_t, y_t)$ on the path is at distance $L_d$ from the robot:
@@ -876,6 +936,16 @@ $$\\theta_1 = \\arctan2(y, x) - \\arctan2(l_2 \\sin\\theta_2,\\ l_1 + l_2 \\cos\
 
 The choice of $+\\arccos$ vs $-\\arccos$ for $\\theta_2$ selects the **elbow-up** or **elbow-down** branch.
 """),
+        md("""## Intuition — what's actually going on?
+
+**Forward** kinematics is easy: if I tell you the angles of all the joints in a robot arm, you can compute where the hand ends up by stacking rotations. **Inverse** kinematics is the harder reverse problem: I tell you where I want the hand, and you have to figure out the joint angles.
+
+For a 2-link planar arm there's a closed-form solution — you can write down explicit formulas for the two joint angles. There are usually **two valid solutions** ("elbow up" and "elbow down"), like how your arm can reach the same point with your elbow pointing forward or backward.
+
+The trick is the **law of cosines**: the triangle formed by (shoulder, elbow, hand) has all three side lengths known (the two link lengths, plus the distance from shoulder to target). The law of cosines gives the elbow angle directly. Then a bit of trig gives the shoulder angle.
+
+Real industrial robots have 6 or 7 joints in 3D, no closed form exists, and you need numerical IK (see notebook 16).
+"""),
         md(r"""### Compatibility check — math ↔ code
 
 | Math | Code |
@@ -942,6 +1012,19 @@ def nb_08_quadrotor_pid():
 **Section:** UAV · **Mirrors MATLAB:** *Approximate High-Fidelity UAV Models*
 
 We use a planar (2-D) quadrotor model with state `[z, ż, φ, φ̇]` (altitude, vertical velocity, roll, roll rate) and two control inputs: total **thrust** and **roll torque**.
+"""),
+        md("""## Intuition — what's actually going on?
+
+A quadrotor is unstable. Without active control it falls over the moment any disturbance tips it. We need controllers that, given the current attitude and altitude, compute thrust and torque commands to keep it flying.
+
+We use the simplest possible scheme: **cascaded PID**. Two independent control loops:
+
+- **Altitude loop**: thrust ≈ gravity (to hover) plus a correction proportional to "how far am I from the desired altitude" and "how fast am I going up/down".
+- **Attitude loop**: torque is proportional to "how tilted am I from upright" and "how fast am I tilting".
+
+The clever part is the **gravity feed-forward**: the controller knows that at hover, thrust must equal weight. So instead of feedback alone catching up, we pre-set the operating point at $T = m g$. The feedback then only has to handle deviations from hover, which keeps the closed loop nicely linear and easy to tune.
+
+The attitude loop is *much faster* than the altitude loop (its eigenvalues are ~42 rad/s vs ~3 rad/s) — that's why the simulation timestep has to be small (0.005 s in the notebook). Bigger timesteps and the attitude loop becomes numerically unstable, even though it's stable on paper. This is a textbook lesson in why simulator timesteps matter.
 """),
         md(r"""## Analytical derivation
 
@@ -1078,6 +1161,16 @@ Classical lane detection pipeline:
 
 We synthesize a road scene so the notebook needs no external images.
 
+## Intuition — what's actually going on?
+
+A self-driving car needs to know where the lane lines are. The very oldest and still very useful technique is purely "classical" image processing — no neural networks required:
+
+1. **Edges**: lane lines are sharp boundaries between road and paint. Compute the *gradient* of brightness at every pixel; high gradient = edge. That's what **Canny** does (with some clever extras: thin the edges to 1-pixel-wide, then chain them).
+2. **Region of interest**: lane lines only appear in a trapezoid in front of the car. Mask out everything else (sky, oncoming lane, hood). Crucial: most of the "edges" we found are not lanes — we just throw them away.
+3. **Lines**: edge pixels alone aren't lines. The **Hough transform** is a vote-counting scheme — every edge pixel "votes" for all possible lines that pass through it, and lines with many votes win.
+
+The result is a list of line segments that match the lanes. From there it's a short hop to "where's the lane center and how do I steer to stay in it" (see notebook 06 for the steering controller).
+
 ### Analytical underpinning + compatibility
 
 **Canny edges.** For each pixel compute gradient magnitude
@@ -1164,6 +1257,16 @@ Build an occupancy grid by ray-casting simulated lidar from a few known robot po
 $$\\ell(c) \\leftarrow \\ell(c) + \\log\\frac{p(z\\mid m_c)}{p(z\\mid \\neg m_c)}$$
 
 Final probability: $p = 1 / (1 + e^{-\\ell})$.
+
+## Intuition — what's actually going on?
+
+You're a robot with a lidar (laser scanner). At each pose, the lidar sweeps around and tells you the distance to whatever it hits in every direction. From multiple poses you want to build a **map** of the world.
+
+The map is a grid of cells. Each cell holds a probability: how likely is it to be occupied? Every lidar beam that *passes through* a cell on its way to a hit is evidence that the cell is **free**. The cell that the beam *terminates on* is evidence that the cell is **occupied**.
+
+The slick way to combine evidence from many beams is **log-odds**: instead of multiplying probabilities (slow, numerically unstable), we add log-likelihood-ratios (fast, numerically clean). The final probability is recovered via the logistic function at the end.
+
+That's basically how every modern mobile robot builds a 2D map: ray-cast each scan, accumulate evidence in log-odds, view as probability.
 
 ### Compatibility check — math ↔ code
 
@@ -1261,6 +1364,20 @@ def nb_11_icp():
 **Section:** SLAM · **Mirrors MATLAB:** *2D Lidar SLAM Implementations* (scan-matching front-end)
 
 ICP aligns two point clouds by alternating between (a) finding nearest-neighbor correspondences and (b) solving for the rigid transform $(R, t)$ that minimizes the sum-of-squared distances over those matches.
+"""),
+        md("""## Intuition — what's actually going on?
+
+Two scans of the same room, taken from slightly different positions, look like two clouds of points that *almost* line up. ICP (Iterative Closest Point) is the algorithm that snaps them into perfect alignment.
+
+The procedure is dead simple, repeated until convergence:
+
+1. **Pair up** each point in the source cloud with its closest point in the target cloud.
+2. Find the **best rigid transform** (rotation + translation) that brings each source point to its matched target.
+3. Apply the transform. Repeat.
+
+The magic is step 2: finding the optimal rotation given correspondences is *not* obvious, but it has a beautiful closed-form solution called the **Kabsch algorithm**. You build a small 3×3 (or 2×2 in 2D) cross-covariance matrix from the two centered clouds, take its SVD, and the optimal rotation is $R = V U^T$. One line of NumPy.
+
+ICP is everywhere: lidar SLAM (matching consecutive scans), 3D reconstruction (stitching depth-camera frames), surgical robotics (registering CT scans to patient anatomy). The catch: it converges to the *closest* local minimum, so the initial alignment has to be reasonable.
 """),
         md(r"""## Analytical derivation
 
@@ -1389,6 +1506,14 @@ EKF-SLAM jointly estimates the robot pose **and** the positions of $N$ landmarks
 $$\\mu = [x_r,\\ y_r,\\ \\theta_r,\\ x_{\\ell_1},\\ y_{\\ell_1},\\ \\dots,\\ x_{\\ell_N},\\ y_{\\ell_N}]^T$$
 
 Each time we observe a landmark for the first time, we **initialize** its position from the current robot pose and observation.
+"""),
+        md("""## Intuition — what's actually going on?
+
+SLAM (Simultaneous Localization and Mapping) is the holy grail of mobile robotics: a robot dropped into a brand-new place that has to **build a map and figure out where it is on that map at the same time**. It's a chicken-and-egg problem — without a map you can't localize, without localizing you can't build a map.
+
+The EKF-SLAM solution is to put both into one big state vector: `[robot_x, robot_y, robot_θ, landmark_1_x, landmark_1_y, landmark_2_x, ...]`. The Kalman filter then jointly estimates every entry. The key insight is the **covariance matrix is full** — the robot's pose uncertainty is correlated with every landmark's position uncertainty. When you see a landmark and correct your estimate of *its* position, your *own* position estimate also gets sharper. That's the magic of SLAM.
+
+EKF-SLAM's downside is the state vector grows with the number of landmarks, so the covariance update is O(N²) per step. Modern SLAM systems use sparser representations (factor graphs, e.g. GTSAM, g2o) for large maps — but EKF-SLAM is the cleanest place to learn the core ideas.
 """),
         md(r"""## Analytical derivation
 
@@ -1543,6 +1668,14 @@ Dijkstra is A\\* with a zero heuristic: it explores cells in pure cost-to-come o
 
 Comparing the two on the same map helps illustrate why an admissible heuristic matters.
 
+## Intuition — what's actually going on?
+
+Dijkstra's algorithm is A\\* without the "head toward the goal" hint. It explores the grid as an expanding circle of equal-cost cells around the start, like a ripple in water. It's guaranteed to find the shortest path, but it doesn't know where the goal is, so it explores *everywhere* equally until it bumps into the goal.
+
+A\\* is strictly faster on the same map because the heuristic `h(n)` (here Euclidean distance to goal) biases the search to prefer cells that look closer to the goal. The picture from this notebook shows Dijkstra exploring **1190** cells vs A\\* exploring **522** for the same path — A\\* expanded less than half as many nodes.
+
+When would you use plain Dijkstra anyway? When you have *no* useful heuristic — e.g. you're computing shortest paths in an abstract graph where there's no spatial structure.
+
 ### Compatibility check — math ↔ code
 
 | Math | Code |
@@ -1628,6 +1761,16 @@ def nb_14_dwa():
 **Section:** Motion Planning · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance*
 
 DWA is a **local** planner: at each control step it samples reachable $(v, \omega)$ pairs, simulates each forward for a short horizon, and scores the resulting trajectory.
+"""),
+        md("""## Intuition — what's actually going on?
+
+A\\* and RRT plan a path from where you are to where you want to go *upfront* — but they assume the world is static. In reality, obstacles move, the map is uncertain, and you only have control over the next fraction of a second of motion. That's where **local planners** come in.
+
+The Dynamic Window Approach (DWA) thinks like this: "I'm a wheelchair-like robot. In the next 0.1 seconds I can only change my speed and turn rate by a limited amount (because of my motor accelerations). So let me **sample** a bunch of plausible (speed, turn-rate) pairs in that *dynamic window*, simulate each one forward for ~2 seconds with the current world, and pick whichever one looks best."
+
+"Best" is a hand-tuned weighted sum: close to the goal, far from obstacles, fast forward. It's a single-step receding-horizon planner — very cheap to compute, very reactive to new obstacles. The animation in the README shows it gracefully detouring around dynamic obstacles.
+
+DWA's blind spot: it's myopic. It can't reason about narrow gaps several seconds out — it'll happily steer into a dead-end alley. Combine DWA with a global planner (A\\*, RRT) to fix that.
 """),
         md(r"""## Analytical derivation
 
@@ -1756,6 +1899,19 @@ $$\\delta = \\psi_e + \\arctan\\!\\left(\\frac{k \\cdot e_{ct}}{v}\\right)$$
 
 where $\\psi_e$ is heading error, $e_{ct}$ is signed cross-track distance, and $k$ is a gain.
 
+## Intuition — what's actually going on?
+
+Pure pursuit (notebook 06) chases a look-ahead point on the path — clever but it can cut corners. Stanley control, invented at Stanford for the DARPA Grand Challenge winning car, takes a different geometric viewpoint.
+
+Stand at the **front axle** of the car (not the rear). Ask two questions:
+
+1. **Heading error**: am I pointing the same direction as the road?
+2. **Cross-track error**: how far off the road am I, sideways?
+
+Stanley says: steer = (heading error) + arctan(gain × cross-track error / speed). It's literally the sum of "fix my heading" and "swing me back onto the road" — with a `1/v` to scale the cross-track correction so it doesn't oversteer at high speed.
+
+In testing, Stanley turned out to track curved paths cleaner than pure pursuit, which is why it became famous after winning the desert race. The notebook shows it gracefully following a sinusoidal road with no overshoot.
+
 ### Compatibility check — math ↔ code
 
 | Math | Code |
@@ -1829,6 +1985,16 @@ For arms with more joints than task DOFs (or no closed-form solution), we use **
 $$\\Delta\\theta = J^T (J J^T + \\lambda^2 I)^{-1} \\Delta x$$
 
 The damping $\\lambda$ keeps the update bounded near singularities.
+
+## Intuition — what's actually going on?
+
+Notebook 07 had a closed-form IK for a 2-link arm — solve some triangle math, done. But for a 3-link arm, or any real industrial robot (6+ joints in 3D), there's no closed form. We need **numerical IK**.
+
+The idea is iterative: start with some guess of the joint angles. Compute where the hand currently is. If it's not where we want it, take a *small step* in joint space in the direction that will move the hand toward the target. Repeat.
+
+The "direction in joint space" is the **Jacobian transpose** — the Jacobian `J` is the matrix that relates small joint motions to hand motions, so `J^T` does the reverse mapping. Pure J-transpose can oscillate, so we use **damped least squares**: $J^T (JJ^T + \\lambda^2 I)^{-1}$. The damping $\\lambda$ acts like an "energy cost" that prevents huge updates, especially near *singularities* (configurations where the arm loses a degree of freedom and J becomes ill-conditioned).
+
+This is how every modern robot arm computes IK in real time. The trade-off: numerical IK converges to *a* solution near your initial guess, not necessarily the globally optimal one — initialization matters.
 
 ### Compatibility check — math ↔ code
 
@@ -1919,6 +2085,19 @@ def nb_17_orb():
 
 ORB (Oriented FAST and Rotated BRIEF) is a fast, rotation-invariant feature detector + descriptor. We detect features in two synthetic images (one is a rotated + translated version of the other) and match them with Hamming distance + cross-check.
 
+## Intuition — what's actually going on?
+
+When you see the same object from two angles, your brain effortlessly recognizes it's the same thing. A camera can't do that directly — but it can be taught to spot *distinctive points* (corners, blobs) and produce a fingerprint (descriptor) for each one. Two images of the same scene then share many fingerprints, and we can match them up.
+
+ORB has two parts:
+
+- **Detector** (FAST): scan every pixel. Look at the 16 pixels in a small circle around it. If at least 9 contiguous pixels are all significantly brighter or all significantly darker, it's a corner. Fast because it's mostly comparisons.
+- **Descriptor** (rotated BRIEF): around each corner, pick ~256 pre-chosen pairs of nearby pixels. For each pair, write a 1 if the first is darker than the second, else 0. That's a 256-bit fingerprint. "Rotated" means the pairs are pre-rotated by the corner's orientation, so the fingerprint doesn't change if you turn the image.
+
+Matching is then bit-counting: two fingerprints' similarity is just how many bits they share (Hamming distance). Extremely fast on CPUs.
+
+ORB is the workhorse of mobile-robot visual odometry and SLAM — see notebook 11 (ICP) for how matched features turn into a rigid-transform estimate.
+
 ### Analytical underpinning + compatibility
 
 **FAST corner test.** A pixel $p$ with intensity $I_p$ is a corner if, among the 16 pixels on a circle of radius 3 around it, at least $N$ contiguous pixels are all brighter than $I_p + t$ or all darker than $I_p - t$ (typically $N = 9$, $t$ = small threshold). The check on $N=9$ contiguous pixels is what makes it both fast and rotationally meaningful.
@@ -1995,6 +2174,19 @@ def nb_18_kalman_tracking():
 **Section:** Perception · **Mirrors MATLAB:** *Object Tracking and Motion Estimation*
 
 We track a 2-D object with a **constant-velocity** Kalman filter using only noisy position measurements.
+"""),
+        md("""## Intuition — what's actually going on?
+
+You're watching a target through a noisy camera — say a car going down the highway. Every frame you get a position estimate, but with random measurement noise. If you just plot the measurements, you get a jagged line. You want a *smooth* estimate of where the target is *and* how fast it's moving.
+
+A **Kalman filter** is the optimal way to do this assuming (a) the target follows a known motion model (e.g., constant velocity) and (b) the noise is Gaussian. It maintains a current best-guess state (position + velocity) plus a *covariance* (how uncertain). Every step:
+
+1. **Predict**: project the state forward in time using the motion model. Uncertainty grows.
+2. **Update**: when a new measurement arrives, blend it with the prediction in proportion to their respective confidences. Uncertainty shrinks.
+
+The blending weight is the famous **Kalman gain** — it's automatically computed from the covariance and elegantly does the right thing: if my prediction is very certain, ignore noisy measurements; if my measurements are very accurate, weight them heavily.
+
+The notebook shows the filter recovering a smooth trajectory through a sudden maneuver (target changes direction mid-flight). The constant-velocity assumption breaks for a few steps, the filter lags briefly, then catches up.
 """),
         md(r"""## Analytical derivation
 
@@ -2113,6 +2305,14 @@ $$\\dot{x} = v\\cos\\theta,\\quad \\dot{y} = v\\sin\\theta,\\quad \\dot\\theta =
 
 We sweep three steering schedules to illustrate the resulting trajectories.
 
+## Intuition — what's actually going on?
+
+A car is *not* a "tank" that can spin in place. To turn, you have to be moving and turn the front wheels. The simplest math model that captures this — and is used in 90% of self-driving algorithms below freeway speeds — is the **kinematic bicycle**.
+
+Approximate the car as a single bicycle: one wheel at the front (steerable), one at the rear (drives the car forward). The rear wheel always points in the body direction; the front wheel points at an angle `δ` (the steering angle). Going forward at speed `v` causes the body to rotate around an instant center, and the turn rate is `(v/L) tan(δ)` where `L` is the wheelbase.
+
+This captures the essential car behavior: faster speed → bigger turn radius for the same steering input; sharper steering → tighter turn. It's wrong at high speeds (no tire slip, no momentum effects), but right where it counts for parking lots, low-speed maneuvers, and most ground-robot work.
+
 ### Compatibility check — math ↔ code
 
 | Math | Code |
@@ -2174,6 +2374,16 @@ def nb_20_symbolic_dynamics():
 We derive the equation of motion for a simple pendulum **symbolically** using SymPy, then convert the result into a fast numerical function with `lambdify` and integrate it.
 
 This mirrors MATLAB's Simscape / Symbolic Math Toolbox workflow: model in symbols, derive analytically, simulate numerically.
+
+## Intuition — what's actually going on?
+
+You probably learned that a pendulum's equation of motion is $\\ddot\\theta = -(g/L)\\sin\\theta$. But where does that come from? Usually it's just stated — like magic.
+
+The cleanest way to derive it is the **Lagrangian method**: write down the system's kinetic energy `T` (energy of motion) and potential energy `V` (energy of height), then crank a fixed mathematical formula and out pops the equation of motion. No drawing free-body diagrams, no worrying about which direction the tension force points — just energy bookkeeping.
+
+This notebook does that derivation **symbolically** with SymPy. We declare $\\theta(t)$ as a function of time, write out the bob's position vector, compute $T$ and $V$, and apply the Euler-Lagrange operator. SymPy does all the algebra and returns the closed-form ODE. Then we lambdify it for fast numerical integration.
+
+This is the entire workflow that powers MATLAB's Simscape and Mathematica's mechanical-simulation tools: humans write **what** the physics is (Lagrangian), software derives **how** to simulate it. For a single pendulum it's overkill — but the same machinery scales to robot arms with 30 joints where hand-derivation would take days.
 
 ### Analytical setup + compatibility
 
