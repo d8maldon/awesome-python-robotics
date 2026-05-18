@@ -6,32 +6,35 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 
 | Symbol | Meaning |
 |---|---|
-| ✅ | **Mapped** — Python equivalent present in our README |
+| 🏠 | **Owned** — we ship a first-party Jupyter notebook implementing this (see [notebooks/](notebooks/)) |
+| ✅ | **Mapped** — Python equivalent present in our README (external project) |
 | 🔁 | **Cross-ref** — original is a pointer to another section; mirrored as cross-ref |
 | ➖ | **N/A** — concept doesn't translate (Simulink-specific codegen, MathWorks-internal catch-all) |
 
+A 🏠 entry implies the row is also mapped — the notebook is in addition to (or instead of) the external library.
+
 ## Summary
 
-| Section | Total | ✅ | 🔁 | ➖ |
-|---|---:|---:|---:|---:|
-| Ground Vehicles and Mobile Robotics | 10 | 8 | 2 | 0 |
-| Manipulation | 9 | 9 | 0 | 0 |
-| Legged Locomotion | 6 | 6 | 0 | 0 |
-| Robot Modeling | 5 | 5 | 0 | 0 |
-| Perception | 8 | 8 | 0 | 0 |
-| Mapping, Localization and SLAM | 6 | 6 | 0 | 0 |
-| Motion Planning and Path Planning | 7 | 7 | 0 | 0 |
-| Motion Control | 5 | 5 | 0 | 0 |
-| Unmanned Aerial Vehicles (UAV) | 7 | 7 | 0 | 0 |
-| Marine Robotics & AUV | 7 | 7 | 0 | 0 |
-| Automated Driving | 7 | 7 | 0 | 0 |
-| Simulators | 5 | 4 | 1 | 0 |
-| ROS and Middleware | 6 | 4 | 0 | 2 |
-| Hardware and Connectivity | 10 | 8 | 1 | 1 |
-| Relevant Toolboxes / Libraries | 11 | 11 | 0 | 0 |
-| **TOTAL** | **109** | **102** | **4** | **3** |
+| Section | Total | 🏠 Owned | ✅ External only | 🔁 | ➖ |
+|---|---:|---:|---:|---:|---:|
+| Ground Vehicles and Mobile Robotics | 10 | 1 | 7 | 2 | 0 |
+| Manipulation | 9 | 2 | 7 | 0 | 0 |
+| Legged Locomotion | 6 | 0 | 6 | 0 | 0 |
+| Robot Modeling | 5 | 1 | 4 | 0 | 0 |
+| Perception | 8 | 2 | 6 | 0 | 0 |
+| Mapping, Localization and SLAM | 6 | 4 | 2 | 0 | 0 |
+| Motion Planning and Path Planning | 7 | 3 | 4 | 0 | 0 |
+| Motion Control | 5 | 1 | 4 | 0 | 0 |
+| Unmanned Aerial Vehicles (UAV) | 7 | 1 | 6 | 0 | 0 |
+| Marine Robotics & AUV | 7 | 0 | 7 | 0 | 0 |
+| Automated Driving | 7 | 1 | 6 | 0 | 0 |
+| Simulators | 5 | 0 | 4 | 1 | 0 |
+| ROS and Middleware | 6 | 0 | 4 | 0 | 2 |
+| Hardware and Connectivity | 10 | 0 | 8 | 1 | 1 |
+| Relevant Toolboxes / Libraries | 11 | 0 | 11 | 0 | 0 |
+| **TOTAL** | **109** | **16** | **86** | **4** | **3** |
 
-**Coverage: 102 / 102 (100%) of mappable entries — every MATLAB demo, tutorial, and toolbox has a Python equivalent.** The 4 cross-refs are mirrored as cross-refs; the 3 ➖ entries (Simulink ROS support, Simulink ROS codegen, MATLAB hardware support catch-all) are Simulink-specific and have no Python concept to map.
+**Coverage: 102 / 102 (100%) of mappable entries.** Of those, **16 are owned** (we ship a first-party Jupyter notebook) and **86 are externally mapped** (curated link to a Python project). Path-tracking notebooks #06 (pure pursuit) and #15 (Stanley) also strengthen the *Motion Planning* row 5 (Path Following) but aren't double-counted.
 
 ---
 
@@ -44,7 +47,7 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 | 1 | Off-Road Navigation for Autonomous Vehicles | ✅ | `terrain-navigation` (ETH Zurich ASL) |
 | 2 | Sprayer-Equipped Tractor Navigation in Vineyard | ✅ | `agri_gaia` (open agricultural robotics platform) |
 | 3 | Developing Navigation Stacks for Mobile Robots and UGV | ✅ | Nav2 |
-| 4 | Kinematic motion models for simulation | ✅ | PythonRobotics, Robotics Toolbox for Python |
+| 4 | Kinematic motion models for simulation | 🏠 | **Notebook [19](notebooks/19_ground_vehicles_bicycle.ipynb)** (Bicycle kinematic model) + PythonRobotics, Robotics Toolbox for Python |
 | 5 | Control and simulation of warehouse robots | ✅ | `Open-RMF` (Open Robotics Middleware Framework for fleet management) |
 | 6 | Simulation and programming of robot swarm | ✅ | Crazyswarm, PettingZoo |
 | 7 | Mapping, Localization and SLAM (cross-ref) | 🔁 | Cross-ref present in README |
@@ -57,8 +60,8 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
 | 1 | Tools for rigid body tree dynamics and analysis | ✅ | Pinocchio, Robotics Toolbox for Python |
-| 2 | Inverse Kinematics | ✅ | ikpy, MoveIt 2, TRAC-IK |
-| 3 | Inverse kinematics with spatial constraints | ✅ | MoveIt 2, TRAC-IK |
+| 2 | Inverse Kinematics | 🏠 | **Notebook [07](notebooks/07_manipulation_ik_2link.ipynb)** (analytical 2-link IK) + ikpy, MoveIt 2, TRAC-IK |
+| 3 | Inverse kinematics with spatial constraints | 🏠 | **Notebook [16](notebooks/16_manipulation_jacobian_ik.ipynb)** (Jacobian-based numerical IK) + MoveIt 2, TRAC-IK |
 | 4 | Interactive Inverse Kinematics | ✅ | MoveIt 2 (RViz interactive markers) |
 | 5 | Collision checking (self-collisions) | ✅ | `python-fcl`, PyBullet collision API |
 | 6 | Trajectory Generation | ✅ | Robotics Toolbox for Python, MoveIt 2 |
@@ -81,7 +84,7 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
-| 1 | Simscape Tools for Modeling and Simulation | ✅ | `OMPython` (OpenModelica) + `BondGraphTools` for symbolic multi-domain physical modeling |
+| 1 | Simscape Tools for Modeling and Simulation | 🏠 | **Notebook [20](notebooks/20_modeling_symbolic_pendulum.ipynb)** (Lagrangian dynamics with SymPy) + `OMPython` (OpenModelica) + `BondGraphTools` |
 | 2 | Simulate Manipulator Actuators and Tune Control Parameters | ✅ | `OMPython` + PyBullet/MuJoCo |
 | 3 | Algorithm Verification Using Robot Models | ✅ | `pydrake` (Drake Python bindings) |
 | 4 | Import Robots from URDF Files | ✅ | urchin, yourdfpy |
@@ -95,8 +98,8 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 | 2 | Lidar and 3D Point Cloud Processing | ✅ | Open3D, MMDetection3D |
 | 3 | 3D Object Detection with Point Clouds | ✅ | MMDetection3D |
 | 4 | 3D Vision and Stereo Vision | ✅ | OpenCV-Python, PyTorch3D |
-| 5 | Feature Detection, Extraction, and Matching | ✅ | OpenCV-Python |
-| 6 | Object Tracking and Motion Estimation | ✅ | `ByteTrack`, `DeepSORT-realtime` |
+| 5 | Feature Detection, Extraction, and Matching | 🏠 | **Notebook [17](notebooks/17_perception_orb_features.ipynb)** (ORB matching) + OpenCV-Python |
+| 6 | Object Tracking and Motion Estimation | 🏠 | **Notebook [18](notebooks/18_perception_kalman_tracking.ipynb)** (Kalman tracker) + `ByteTrack`, `DeepSORT-realtime` |
 | 7 | Orientation Estimation from Inertial Sensors | ✅ | filterpy |
 | 8 | Drift Reduction for Visual Odometry | ✅ | pySLAM, PyPose |
 
@@ -104,22 +107,22 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
-| 1 | 2D Lidar SLAM (offline + online) | ✅ | `python-graphslam`, `Cartographer` |
+| 1 | 2D Lidar SLAM (offline + online) | 🏠 | **Notebooks [11](notebooks/11_slam_icp.ipynb)** (ICP scan matching) **+ [12](notebooks/12_slam_ekf_slam.ipynb)** (EKF-SLAM) + `python-graphslam`, `Cartographer` |
 | 2 | 3D Lidar SLAM | ✅ | `KISS-ICP` |
 | 3 | SLAM Map Builder Application | ✅ | `RTAB-Map` (built-in GUI map builder) |
-| 4 | Occupancy Grid Utilities | ✅ | `nav2_map_server` |
-| 5 | Monte Carlo Localization | ✅ | Nav2 AMCL |
+| 4 | Occupancy Grid Utilities | 🏠 | **Notebook [10](notebooks/10_mapping_occupancy_grid.ipynb)** (log-odds grid from lidar) + `nav2_map_server` |
+| 5 | Monte Carlo Localization | 🏠 | **Notebooks [03](notebooks/03_localization_ekf.ipynb)** (EKF) **+ [04](notebooks/04_localization_particle_filter.ipynb)** (Particle filter MCL) + Nav2 AMCL |
 | 6 | Ego-Centric (Near Field) Occupancy Maps | ✅ | `grid_map` (ANYbotics) |
 
 ## Motion Planning and Path Planning
 
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
-| 1 | Motion Planners (RRT, PRM, Hybrid A*) | ✅ | OMPL, PythonRobotics |
+| 1 | Motion Planners (RRT, PRM, Hybrid A*) | 🏠 | **Notebooks [01](notebooks/01_motion_planning_astar.ipynb)** (A*) **+ [13](notebooks/13_motion_planning_dijkstra.ipynb)** (Dijkstra) + OMPL, PythonRobotics |
 | 2 | RRT Planners for Manipulators | ✅ | MoveIt 2, OMPL |
-| 3 | RRT Planners for Mobile Robots | ✅ | PythonRobotics |
+| 3 | RRT Planners for Mobile Robots | 🏠 | **Notebook [02](notebooks/02_motion_planning_rrt.ipynb)** (RRT with 10% goal bias) + PythonRobotics |
 | 4 | Path Planning Using Probabilistic Road Maps | ✅ | OMPL |
-| 5 | Path Following with Obstacle Avoidance | ✅ | PythonRobotics, Nav2 |
+| 5 | Path Following with Obstacle Avoidance | 🏠 | **Notebooks [06](notebooks/06_path_tracking_pure_pursuit.ipynb)** (pure pursuit) **+ [14](notebooks/14_motion_planning_dwa.ipynb)** (DWA) **+ [15](notebooks/15_path_tracking_stanley.ipynb)** (Stanley) + PythonRobotics, Nav2 |
 | 6 | Dynamic Re-planning of Paths | ✅ | Nav2 lifecycle replanning + PythonRobotics DWA dynamic obstacles |
 | 7 | Choosing Path Planning Algorithms (guide) | ✅ | PythonRobotics planning algorithm guide |
 
@@ -131,7 +134,7 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 | 2 | Deep RL for Walking Robots | ✅ | legged_gym, Stable-Baselines3 |
 | 3 | MPC for Collision-Free Manipulation | ✅ | do-mpc, CasADi |
 | 4 | MPC for Holonomic Robot Navigation | ✅ | do-mpc |
-| 5 | Multi-Loop PI Tuning for Robotic Arm | ✅ | `TCLab` (process control curriculum), `simple-pid`, `python-control` |
+| 5 | Multi-Loop PI Tuning for Robotic Arm | 🏠 | **Notebook [05](notebooks/05_motion_control_pendulum_lqr.ipynb)** (LQR balancing cart-pole) + `TCLab`, `simple-pid`, `python-control` |
 
 ## Unmanned Aerial Vehicles (UAV)
 
@@ -139,7 +142,7 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 |---|---|---|---|
 | 1 | Simulation Library for Fixed-Wing and Multi-Rotor UAVs | ✅ | gym-pybullet-drones (multi-rotor), `JSBSim` (fixed-wing), AirSim |
 | 2 | Tune Waypoint Follower for Fixed-Wing UAV | ✅ | `JSBSim` + DroneKit-Python / MAVSDK-Python |
-| 3 | Approximate High-Fidelity UAV Models | ✅ | `JSBSim` (high-fidelity 6-DoF flight dynamics with Python bindings) |
+| 3 | Approximate High-Fidelity UAV Models | 🏠 | **Notebook [08](notebooks/08_uav_quadrotor_pid.ipynb)** (planar quadrotor with altitude + roll PID) + `JSBSim` (high-fidelity 6-DoF) |
 | 4 | Load and Playback MAVLink TLOG | ✅ | pymavlink |
 | 5 | MAVLink Parameter Protocol | ✅ | pymavlink |
 | 6 | Support for Parrot Drones | ✅ | Olympe |
@@ -161,7 +164,7 @@ This file mirrors **every** entry in [mathworks-robotics/awesome-matlab-robotics
 
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
-| 1 | Lane Following with Sensor Fusion and Lane Detection | ✅ | openpilot |
+| 1 | Lane Following with Sensor Fusion and Lane Detection | 🏠 | **Notebook [09](notebooks/09_perception_lane_detection.ipynb)** (Canny + ROI + Hough) + openpilot |
 | 2 | Automate Ground Truth Labeling for Semantic Segmentation | ✅ | `CVAT` |
 | 3 | Track Vehicles Using Lidar (Point Cloud → Track List) | ✅ | `OpenPCDet` (end-to-end LiDAR perception + tracking pipeline) |
 | 4 | Track-Level Fusion of Radar and Lidar | ✅ | `AB3DMOT` |
@@ -315,19 +318,29 @@ The following are **➖ N/A** (Simulink-specific concepts that don't translate t
 
 ## Appendix B: Our own implementations
 
-This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for our growing collection of runnable Jupyter notebooks.
+This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for the full collection — 20 runnable Jupyter notebooks with embedded plots.
 
-Starter set (in progress):
-
-| # | Notebook | Maps to MATLAB section |
+| # | Notebook | Section it covers in TRACKING above |
 |---|---|---|
-| 1 | A* path planning | Motion Planning |
-| 2 | RRT in 2D | Motion Planning |
-| 3 | Extended Kalman Filter localization | Mapping, Localization and SLAM |
-| 4 | Particle filter localization | Mapping, Localization and SLAM |
-| 5 | LQR control of an inverted pendulum | Motion Control |
-| 6 | Pure pursuit path tracking | Motion Control |
-| 7 | Inverse kinematics for a 2-link arm | Manipulation |
-| 8 | Quadrotor altitude + attitude PID | UAV |
-| 9 | Lane detection with OpenCV | Automated Driving |
-| 10 | 2D occupancy grid from lidar scans | Mapping, Localization and SLAM |
+| 01 | [A* path planning](notebooks/01_motion_planning_astar.ipynb) | Motion Planning #1 |
+| 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning #3 |
+| 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | SLAM #5 |
+| 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | SLAM #5 |
+| 05 | [LQR inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control #5 |
+| 06 | [Pure pursuit](notebooks/06_path_tracking_pure_pursuit.ipynb) | Motion Planning #5 |
+| 07 | [Analytical 2-link IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation #2 |
+| 08 | [Quadrotor altitude + roll PID](notebooks/08_uav_quadrotor_pid.ipynb) | UAV #3 |
+| 09 | [Lane detection (Canny + Hough)](notebooks/09_perception_lane_detection.ipynb) | Auto Driving #1 |
+| 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | SLAM #4 |
+| 11 | [ICP scan matching](notebooks/11_slam_icp.ipynb) | SLAM #1 |
+| 12 | [EKF SLAM](notebooks/12_slam_ekf_slam.ipynb) | SLAM #1 |
+| 13 | [Dijkstra](notebooks/13_motion_planning_dijkstra.ipynb) | Motion Planning #1 |
+| 14 | [Dynamic Window Approach (DWA)](notebooks/14_motion_planning_dwa.ipynb) | Motion Planning #5 |
+| 15 | [Stanley path tracking](notebooks/15_path_tracking_stanley.ipynb) | Motion Planning #5 |
+| 16 | [Jacobian-based 3-link IK](notebooks/16_manipulation_jacobian_ik.ipynb) | Manipulation #3 |
+| 17 | [ORB feature matching](notebooks/17_perception_orb_features.ipynb) | Perception #5 |
+| 18 | [Kalman tracking of maneuvering target](notebooks/18_perception_kalman_tracking.ipynb) | Perception #6 |
+| 19 | [Bicycle kinematic model](notebooks/19_ground_vehicles_bicycle.ipynb) | Ground Vehicles #4 |
+| 20 | [Symbolic Lagrangian dynamics (SymPy)](notebooks/20_modeling_symbolic_pendulum.ipynb) | Robot Modeling #1 |
+
+CI: every push that touches notebooks runs them headless via `nbconvert --execute` ([workflow](.github/workflows/notebooks.yml)).

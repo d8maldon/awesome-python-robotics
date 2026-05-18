@@ -836,6 +836,741 @@ plt.show()
     write("10_mapping_occupancy_grid.ipynb", cells)
 
 
+# ---------------------------------------------------------------------------
+# 11. ICP scan matching
+# ---------------------------------------------------------------------------
+def nb_11_icp():
+    cells = [
+        md("""# 11 — Iterative Closest Point (ICP) Scan Matching
+
+**Section:** SLAM · **Mirrors MATLAB:** *2D Lidar SLAM Implementations* (scan-matching front-end)
+
+ICP aligns two point clouds by alternating between (a) finding nearest-neighbor correspondences and (b) solving for the rigid transform (R, t) that minimizes the sum-of-squared distances over those matches.
+
+The rigid transform step has a closed-form solution via SVD on the cross-covariance matrix.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(0)
+
+
+def make_shape(n=120):
+    t = np.linspace(0, 2 * np.pi, n)
+    x = 3 * np.cos(t) + 0.5 * np.sin(3 * t)
+    y = 3 * np.sin(t) + 0.5 * np.cos(2 * t)
+    return np.column_stack([x, y])
+
+
+src = make_shape()
+true_angle = 0.4
+true_R = np.array([[np.cos(true_angle), -np.sin(true_angle)],
+                   [np.sin(true_angle),  np.cos(true_angle)]])
+true_t = np.array([1.5, -1.0])
+tgt = (true_R @ src.T).T + true_t + np.random.randn(*src.shape) * 0.08
+print(f"True transform: angle={np.degrees(true_angle):.1f}°, t={true_t}")
+"""),
+        code("""def icp(src, tgt, n_iter=40, tol=1e-6):
+    s = src.copy()
+    R_total = np.eye(2); t_total = np.zeros(2)
+    prev_err = np.inf
+    for _ in range(n_iter):
+        # Nearest neighbors (brute force)
+        d = np.linalg.norm(s[:, None] - tgt[None], axis=2)
+        idx = d.argmin(axis=1)
+        matched = tgt[idx]
+        # Best-fit rotation via SVD
+        s_mean, m_mean = s.mean(axis=0), matched.mean(axis=0)
+        H = (s - s_mean).T @ (matched - m_mean)
+        U, _, Vt = np.linalg.svd(H)
+        R = Vt.T @ U.T
+        if np.linalg.det(R) < 0:
+            Vt[-1] *= -1
+            R = Vt.T @ U.T
+        t = m_mean - R @ s_mean
+        s = (R @ s.T).T + t
+        R_total = R @ R_total
+        t_total = R @ t_total + t
+        err = np.mean(np.linalg.norm(s - matched, axis=1) ** 2)
+        if abs(prev_err - err) < tol:
+            break
+        prev_err = err
+    return R_total, t_total, s
+
+
+R_est, t_est, aligned = icp(src.copy(), tgt)
+print(f"Recovered: angle={np.degrees(np.arctan2(R_est[1, 0], R_est[0, 0])):.2f}°, t={t_est}")
+"""),
+        code("""fig, axs = plt.subplots(1, 2, figsize=(13, 5))
+axs[0].plot(src[:, 0], src[:, 1], 'b.', label='Source')
+axs[0].plot(tgt[:, 0], tgt[:, 1], 'r.', label='Target')
+axs[0].set_title('Before ICP'); axs[0].legend(); axs[0].set_aspect('equal'); axs[0].grid()
+
+axs[1].plot(aligned[:, 0], aligned[:, 1], 'g.', label='Aligned source')
+axs[1].plot(tgt[:, 0], tgt[:, 1], 'r.', label='Target')
+axs[1].set_title('After ICP'); axs[1].legend(); axs[1].set_aspect('equal'); axs[1].grid()
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("11_slam_icp.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 12. EKF SLAM
+# ---------------------------------------------------------------------------
+def nb_12_ekf_slam():
+    cells = [
+        md("""# 12 — EKF SLAM with Range-Bearing Landmarks
+
+**Section:** SLAM · **Mirrors MATLAB:** *2D Lidar SLAM Implementations* (full SLAM, not just localization)
+
+EKF-SLAM jointly estimates the robot pose **and** the positions of $N$ landmarks. The state vector is:
+
+$$\\mu = [x_r,\\ y_r,\\ \\theta_r,\\ x_{\\ell_1},\\ y_{\\ell_1},\\ \\dots,\\ x_{\\ell_N},\\ y_{\\ell_N}]^T$$
+
+Each time we observe a landmark for the first time, we **initialize** its position from the current robot pose and observation. Subsequent observations refine both the robot pose and the landmark estimate (and their covariance).
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(1)
+
+T = 200; dt = 0.1
+v, omega = 1.0, 0.1
+true_robot = np.zeros((T, 3))
+for k in range(1, T):
+    th = true_robot[k - 1, 2]
+    true_robot[k] = true_robot[k - 1] + dt * np.array([v * np.cos(th), v * np.sin(th), omega])
+
+true_lm = np.array([[5, 5], [-5, 5], [0, -8], [7, -2]])
+N_LM = len(true_lm)
+n = 3 + 2 * N_LM
+"""),
+        code("""mu = np.zeros(n)
+Sigma = np.eye(n) * 1e6
+Sigma[:3, :3] = np.eye(3) * 0.01
+
+Q = np.diag([0.05, 0.05, 0.01]) ** 2
+R_obs = np.diag([0.2, 0.05]) ** 2
+seen = [False] * N_LM
+mu_hist = [mu.copy()]
+
+
+def wrap(a):
+    return (a + np.pi) % (2 * np.pi) - np.pi
+
+
+for k in range(1, T):
+    u = [v + np.random.randn() * 0.05, omega + np.random.randn() * 0.01]
+    th = mu[2]
+    mu[:3] = mu[:3] + dt * np.array([u[0] * np.cos(th), u[0] * np.sin(th), u[1]])
+    G = np.eye(n)
+    G[0, 2] = -dt * u[0] * np.sin(th)
+    G[1, 2] =  dt * u[0] * np.cos(th)
+    F = np.zeros((3, n)); F[:3, :3] = np.eye(3)
+    Sigma = G @ Sigma @ G.T + F.T @ Q @ F
+
+    for i, lm in enumerate(true_lm):
+        z = np.array([
+            np.linalg.norm(lm - true_robot[k, :2]),
+            np.arctan2(lm[1] - true_robot[k, 1], lm[0] - true_robot[k, 0]) - true_robot[k, 2],
+        ]) + np.random.multivariate_normal([0, 0], R_obs)
+
+        if not seen[i]:
+            mu[3 + 2 * i]     = mu[0] + z[0] * np.cos(z[1] + mu[2])
+            mu[3 + 2 * i + 1] = mu[1] + z[0] * np.sin(z[1] + mu[2])
+            seen[i] = True
+
+        dx = mu[3 + 2 * i] - mu[0]
+        dy = mu[3 + 2 * i + 1] - mu[1]
+        q = dx * dx + dy * dy
+        r = np.sqrt(q)
+        z_hat = np.array([r, wrap(np.arctan2(dy, dx) - mu[2])])
+        innov = z - z_hat
+        innov[1] = wrap(innov[1])
+
+        H = np.zeros((2, n))
+        H[0, 0] = -dx / r;  H[0, 1] = -dy / r
+        H[1, 0] =  dy / q;  H[1, 1] = -dx / q;  H[1, 2] = -1
+        H[0, 3 + 2 * i] =  dx / r;  H[0, 3 + 2 * i + 1] =  dy / r
+        H[1, 3 + 2 * i] = -dy / q;  H[1, 3 + 2 * i + 1] =  dx / q
+
+        S = H @ Sigma @ H.T + R_obs
+        K = Sigma @ H.T @ np.linalg.inv(S)
+        mu = mu + K @ innov
+        Sigma = (np.eye(n) - K @ H) @ Sigma
+
+    mu_hist.append(mu.copy())
+
+mu_hist = np.array(mu_hist)
+for i in range(N_LM):
+    err = np.linalg.norm(mu[3 + 2 * i: 3 + 2 * i + 2] - true_lm[i])
+    print(f"LM {i}: true={true_lm[i]}  est=({mu[3+2*i]:+.2f}, {mu[3+2*i+1]:+.2f})  err={err:.3f} m")
+"""),
+        code("""fig, ax = plt.subplots(figsize=(8, 8))
+ax.plot(true_robot[:, 0], true_robot[:, 1], 'b-', lw=2, label='True robot')
+ax.plot(mu_hist[:, 0], mu_hist[:, 1], 'r--', lw=1.5, label='SLAM estimate')
+ax.scatter(true_lm[:, 0], true_lm[:, 1], c='g', marker='*', s=250, label='True landmarks')
+for i in range(N_LM):
+    ax.scatter(mu[3 + 2 * i], mu[3 + 2 * i + 1], c='r', marker='x', s=120)
+ax.set_aspect('equal'); ax.grid(); ax.legend()
+ax.set_title('EKF SLAM — robot trajectory + landmark positions')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("12_slam_ekf_slam.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 13. Dijkstra
+# ---------------------------------------------------------------------------
+def nb_13_dijkstra():
+    cells = [
+        md("""# 13 — Dijkstra's Algorithm on an Occupancy Grid
+
+**Section:** Motion Planning · **Mirrors MATLAB:** *Motion Planners (RRT, PRM, Hybrid A\\*)* — Dijkstra baseline
+
+Dijkstra is A\\* with a zero heuristic: it explores cells in pure cost-to-come order. This guarantees optimality but expands more nodes than A\\* (which uses the goal-distance heuristic to bias exploration).
+
+Comparing the two on the same map helps illustrate why an admissible heuristic matters.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+import heapq
+
+np.random.seed(42)
+
+H, W = 30, 50
+grid = np.zeros((H, W), dtype=np.uint8)
+for _ in range(40):
+    y, x = np.random.randint(2, H - 3), np.random.randint(2, W - 3)
+    grid[y - 1:y + 2, x - 1:x + 2] = 1
+start, goal = (2, 2), (H - 3, W - 3)
+grid[start] = 0; grid[goal] = 0
+"""),
+        code("""def dijkstra(grid, start, goal):
+    H, W = grid.shape
+    heap = [(0.0, start, None)]
+    came_from, dist = {}, {start: 0.0}
+    nbrs = [(-1, 0), (1, 0), (0, -1), (0, 1),
+            (-1, -1), (-1, 1), (1, -1), (1, 1)]
+    while heap:
+        d, current, parent = heapq.heappop(heap)
+        if current in came_from:
+            continue
+        came_from[current] = parent
+        if current == goal:
+            path = []
+            while current is not None:
+                path.append(current); current = came_from[current]
+            return path[::-1], dist
+        for dy, dx in nbrs:
+            ny, nx = current[0] + dy, current[1] + dx
+            if 0 <= ny < H and 0 <= nx < W and grid[ny, nx] == 0:
+                nd = d + np.hypot(dy, dx)
+                if nd < dist.get((ny, nx), np.inf):
+                    dist[(ny, nx)] = nd
+                    heapq.heappush(heap, (nd, (ny, nx), current))
+    return None, dist
+
+
+path, dist = dijkstra(grid, start, goal)
+print(f"Path: {len(path)} cells   expanded: {len(dist)} cells")
+"""),
+        code("""fig, ax = plt.subplots(figsize=(11, 6))
+ax.imshow(grid, cmap='Greys', origin='lower')
+expanded = np.full_like(grid, np.nan, dtype=float)
+for (y, x), c in dist.items():
+    expanded[y, x] = c
+ax.imshow(expanded, cmap='viridis', alpha=0.4, origin='lower')
+
+ys, xs = zip(*path)
+ax.plot(xs, ys, 'r-', lw=2.5, label='Dijkstra path')
+ax.plot(start[1], start[0], 'go', ms=14, label='Start')
+ax.plot(goal[1], goal[0], 'b*', ms=18, label='Goal')
+ax.legend(); ax.set_title("Dijkstra — expanded cells shaded by g-score (uses zero heuristic)")
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("13_motion_planning_dijkstra.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 14. Dynamic Window Approach
+# ---------------------------------------------------------------------------
+def nb_14_dwa():
+    cells = [
+        md("""# 14 — Dynamic Window Approach (DWA)
+
+**Section:** Motion Planning · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance*
+
+DWA is a **local** planner: at each control step it samples reachable (v, ω) pairs in the dynamic window (limited by current velocity and acceleration), simulates each forward for a short horizon, and scores the resulting trajectory by heading toward the goal, clearance to obstacles, and forward velocity.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+robot = np.array([0., 0., 0., 0., 0.])      # x, y, theta, v, omega
+goal  = np.array([10., 10.])
+obstacles = np.array([[3, 4], [5, 6], [7, 8], [4, 7], [6, 5], [8, 9]])
+
+v_max, v_min = 1.0, 0.0
+w_max, w_min = 1.0, -1.0
+a_max, alpha_max = 4.0, 6.0      # window must be larger than discrete step
+dt, predict_t = 0.1, 2.5
+"""),
+        code("""def predict(state, v, w):
+    s = state.copy()
+    traj = [s.copy()]
+    for _ in range(int(predict_t / dt)):
+        s[0] += v * np.cos(s[2]) * dt
+        s[1] += v * np.sin(s[2]) * dt
+        s[2] += w * dt
+        s[3], s[4] = v, w
+        traj.append(s.copy())
+    return np.array(traj)
+
+
+def cost(traj, goal, obstacles):
+    dx, dy = goal - traj[-1, :2]
+    goal_dist    = np.hypot(dx, dy)
+    heading_cost = abs(np.arctan2(dy, dx) - traj[-1, 2])
+    d = np.min(np.linalg.norm(traj[:, None, :2] - obstacles[None], axis=2), axis=1)
+    if d.min() < 0.5:
+        return np.inf
+    return 1.0 * goal_dist + 0.3 * heading_cost + 0.2 / d.min() + 0.05 * (v_max - traj[-1, 3])
+"""),
+        code("""hist = [robot[:2].copy()]
+for _ in range(200):
+    vs = np.linspace(max(v_min, robot[3] - a_max * dt),
+                      min(v_max, robot[3] + a_max * dt), 7)
+    ws = np.linspace(max(w_min, robot[4] - alpha_max * dt),
+                      min(w_max, robot[4] + alpha_max * dt), 11)
+    best_c, best_v, best_w = np.inf, 0.0, 0.0
+    for v in vs:
+        for w in ws:
+            c = cost(predict(robot, v, w), goal, obstacles)
+            if c < best_c:
+                best_c, best_v, best_w = c, v, w
+    robot[0] += best_v * np.cos(robot[2]) * dt
+    robot[1] += best_v * np.sin(robot[2]) * dt
+    robot[2] += best_w * dt
+    robot[3], robot[4] = best_v, best_w
+    hist.append(robot[:2].copy())
+    if np.linalg.norm(robot[:2] - goal) < 0.3:
+        break
+hist = np.array(hist)
+print(f"Reached goal in {len(hist)} steps. Final distance: {np.linalg.norm(robot[:2] - goal):.3f} m")
+"""),
+        code("""fig, ax = plt.subplots(figsize=(8, 8))
+ax.scatter(obstacles[:, 0], obstacles[:, 1], c='grey', s=400, label='Obstacles')
+ax.plot(hist[:, 0], hist[:, 1], 'r-', lw=2, label='DWA trajectory')
+ax.plot(0, 0, 'go', ms=14, label='Start')
+ax.plot(*goal, 'b*', ms=18, label='Goal')
+ax.set_aspect('equal'); ax.grid(); ax.legend()
+ax.set_xlim(-1, 12); ax.set_ylim(-1, 12)
+ax.set_title('Dynamic Window Approach Local Planner')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("14_motion_planning_dwa.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 15. Stanley control
+# ---------------------------------------------------------------------------
+def nb_15_stanley():
+    cells = [
+        md("""# 15 — Stanley Path Tracking
+
+**Section:** Path Tracking · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance* (Stanley controller)
+
+Stanley control measures cross-track and heading error at the **front axle** of a bicycle vehicle and chooses steering angle:
+
+$$\\delta = \\psi_e + \\arctan\\!\\left(\\frac{k \\cdot e_{ct}}{v}\\right)$$
+
+where $\\psi_e$ is heading error, $e_{ct}$ is signed cross-track distance, and $k$ is a gain.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+xs_ref = np.linspace(0, 30, 600)
+ys_ref = 3 * np.sin(xs_ref * 0.3)
+path = np.column_stack([xs_ref, ys_ref])
+
+k, L, v = 1.5, 1.5, 1.5
+x = np.array([0.0, -2.5, 0.0])
+dt, T = 0.05, 25.0
+N = int(T / dt)
+hist = np.zeros((N, 3))
+
+
+def wrap(a):
+    return (a + np.pi) % (2 * np.pi) - np.pi
+"""),
+        code("""for i in range(N):
+    fx = x[0] + L * np.cos(x[2])
+    fy = x[1] + L * np.sin(x[2])
+    d = np.linalg.norm(path - np.array([fx, fy]), axis=1)
+    j = int(np.argmin(d))
+    j2 = min(j + 1, len(path) - 1)
+    path_dir = path[j2] - path[max(j - 1, 0)]
+    path_angle = np.arctan2(path_dir[1], path_dir[0])
+    cross = np.dot([fx - path[j, 0], fy - path[j, 1]],
+                    [-np.sin(path_angle), np.cos(path_angle)])
+    heading_err = wrap(path_angle - x[2])
+    delta = heading_err + np.arctan2(k * cross, v)
+    x[0] += v * np.cos(x[2]) * dt
+    x[1] += v * np.sin(x[2]) * dt
+    x[2] += v * np.tan(delta) / L * dt
+    hist[i] = x
+"""),
+        code("""fig, ax = plt.subplots(figsize=(12, 4))
+ax.plot(xs_ref, ys_ref, 'b--', label='Reference')
+ax.plot(hist[:, 0], hist[:, 1], 'r-', lw=2, label='Vehicle')
+ax.plot(0, -2.5, 'go', ms=12, label='Start')
+ax.set_aspect('equal'); ax.grid(); ax.legend()
+ax.set_title('Stanley Path Tracking (front-axle cross-track error)')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("15_path_tracking_stanley.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 16. Jacobian IK for 3-link arm
+# ---------------------------------------------------------------------------
+def nb_16_jacobian_ik():
+    cells = [
+        md("""# 16 — Jacobian-Based Inverse Kinematics for a 3-Link Arm
+
+**Section:** Manipulation · **Mirrors MATLAB:** *Inverse Kinematics with Spatial Constraints*
+
+For arms with more joints than task DOFs (or no closed-form solution), we use **damped least-squares** numerical IK:
+
+$$\\Delta\\theta = J^T (J J^T + \\lambda^2 I)^{-1} \\Delta x$$
+
+The damping $\\lambda$ keeps the update bounded near singularities.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+l = [1.0, 1.0, 0.8]
+
+
+def fk_all(theta):
+    pts = [np.array([0.0, 0.0])]
+    a = 0.0
+    for i in range(3):
+        a += theta[i]
+        pts.append(pts[-1] + np.array([l[i] * np.cos(a), l[i] * np.sin(a)]))
+    return np.array(pts)
+
+
+def jacobian(theta):
+    pts = fk_all(theta)
+    end = pts[-1]
+    J = np.zeros((2, 3))
+    for i in range(3):
+        r = end - pts[i]
+        J[0, i] = -r[1]
+        J[1, i] =  r[0]
+    return J
+
+
+def numerical_ik(target, theta_init, max_iter=200, tol=1e-4, lam=0.05, step=0.4):
+    theta = theta_init.copy()
+    for _ in range(max_iter):
+        end = fk_all(theta)[-1]
+        err = target - end
+        if np.linalg.norm(err) < tol:
+            break
+        J = jacobian(theta)
+        dtheta = J.T @ np.linalg.inv(J @ J.T + lam ** 2 * np.eye(2)) @ err
+        theta = theta + step * dtheta
+    return theta, np.linalg.norm(err)
+"""),
+        code("""# Trace a target trajectory
+N = 70
+phi = np.linspace(0, 2 * np.pi, N)
+targets = np.column_stack([1.2 + 0.5 * np.cos(phi), 1.0 + 0.5 * np.sin(phi)])
+
+theta = np.array([0.4, 0.4, 0.4])
+arm_log = []
+for tgt in targets:
+    theta, _ = numerical_ik(tgt, theta)
+    arm_log.append(fk_all(theta))
+
+fig, ax = plt.subplots(figsize=(8, 8))
+for k, pts in enumerate(arm_log):
+    a = 0.15 + 0.7 * (k / N)
+    ax.plot(pts[:, 0], pts[:, 1], 'b-', alpha=a, lw=1.2)
+    ax.plot(pts[1:-1, 0], pts[1:-1, 1], 'ko', ms=3, alpha=a)
+ax.plot(targets[:, 0], targets[:, 1], 'r--', lw=1.5, label='Target')
+ax.plot(0, 0, 'gs', ms=12, label='Base')
+ax.set_xlim(-1.5, 3); ax.set_ylim(-1, 3)
+ax.set_aspect('equal'); ax.grid(); ax.legend()
+ax.set_title('3-Link Arm Numerical IK (damped least-squares)')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("16_manipulation_jacobian_ik.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 17. ORB feature matching
+# ---------------------------------------------------------------------------
+def nb_17_orb():
+    cells = [
+        md("""# 17 — ORB Feature Detection and Matching
+
+**Section:** Perception · **Mirrors MATLAB:** *Feature Detection, Extraction, and Matching*
+
+ORB (Oriented FAST and Rotated BRIEF) is a fast, rotation-invariant feature detector + descriptor. We detect features in two synthetic images (one is a rotated + translated version of the other) and match them with Hamming distance + cross-check.
+"""),
+        code("""import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(0)
+
+H, W = 240, 320
+img1 = np.zeros((H, W), dtype=np.uint8)
+cv2.rectangle(img1, (50, 50), (100, 100), 200, -1)
+cv2.circle(img1, (200, 80), 30, 150, -1)
+cv2.line(img1, (60, 150), (260, 200), 250, 3)
+cv2.putText(img1, 'PYROBOT', (30, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.0, 255, 2)
+img1 = cv2.GaussianBlur(img1, (3, 3), 0)
+
+M = cv2.getRotationMatrix2D((W / 2, H / 2), 20, 1.0)
+M[0, 2] += 25
+M[1, 2] += 10
+img2 = cv2.warpAffine(img1, M, (W, H))
+"""),
+        code("""orb = cv2.ORB_create(nfeatures=300)
+kp1, des1 = orb.detectAndCompute(img1, None)
+kp2, des2 = orb.detectAndCompute(img2, None)
+
+bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+matches = sorted(bf.match(des1, des2), key=lambda m: m.distance)[:40]
+print(f"img1 features: {len(kp1)}  img2 features: {len(kp2)}  matches kept: {len(matches)}")
+
+out = cv2.drawMatches(img1, kp1, img2, kp2, matches, None,
+                       flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+"""),
+        code("""plt.figure(figsize=(14, 6))
+plt.imshow(out, cmap='gray')
+plt.title('ORB Feature Matches (img1 ↔ rotated/translated img2)')
+plt.axis('off')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("17_perception_orb_features.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 18. Kalman tracking
+# ---------------------------------------------------------------------------
+def nb_18_kalman_tracking():
+    cells = [
+        md("""# 18 — Kalman Filter Tracking of a Maneuvering Target
+
+**Section:** Perception · **Mirrors MATLAB:** *Object Tracking and Motion Estimation*
+
+We track a 2-D object with a **constant-velocity** Kalman filter using only noisy position measurements. The filter recovers a smooth trajectory and stable velocity estimate even when the true target suddenly changes direction.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+np.random.seed(0)
+
+T, dt = 100, 0.1
+true = np.zeros((T, 4))           # x, y, vx, vy
+true[0] = [0, 0, 1, 0.5]
+for k in range(1, T):
+    true[k] = true[k - 1].copy()
+    true[k, :2] += true[k - 1, 2:] * dt
+    if k == 50:
+        true[k, 2:] = [-0.5, 1.0]   # sudden maneuver
+
+R_obs = 0.5
+z = true[:, :2] + np.random.randn(T, 2) * R_obs
+"""),
+        code("""F = np.array([[1, 0, dt, 0],
+              [0, 1, 0, dt],
+              [0, 0, 1, 0],
+              [0, 0, 0, 1]])
+H = np.array([[1, 0, 0, 0],
+              [0, 1, 0, 0]])
+Q = np.diag([0.01, 0.01, 0.15, 0.15])
+R_mat = np.eye(2) * R_obs ** 2
+
+x_est = np.zeros(4); P = np.eye(4)
+est_hist = []
+for k in range(T):
+    x_est = F @ x_est
+    P = F @ P @ F.T + Q
+    y = z[k] - H @ x_est
+    S = H @ P @ H.T + R_mat
+    K = P @ H.T @ np.linalg.inv(S)
+    x_est = x_est + K @ y
+    P = (np.eye(4) - K @ H) @ P
+    est_hist.append(x_est.copy())
+
+est_hist = np.array(est_hist)
+rmse = np.sqrt(np.mean((est_hist[:, :2] - true[:, :2]) ** 2))
+print(f"Position RMSE: {rmse:.3f} m")
+"""),
+        code("""fig, ax = plt.subplots(figsize=(11, 6))
+ax.plot(true[:, 0], true[:, 1], 'b-', lw=2, label='True')
+ax.plot(z[:, 0], z[:, 1], 'k.', alpha=0.4, label='Noisy obs')
+ax.plot(est_hist[:, 0], est_hist[:, 1], 'r--', lw=1.5, label='KF estimate')
+ax.grid(); ax.legend(); ax.set_aspect('equal')
+ax.set_title('Kalman Filter Tracking with Mid-Trajectory Maneuver')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("18_perception_kalman_tracking.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 19. Bicycle kinematic model
+# ---------------------------------------------------------------------------
+def nb_19_bicycle():
+    cells = [
+        md("""# 19 — Kinematic Bicycle Model
+
+**Section:** Ground Vehicles and Mobile Robotics · **Mirrors MATLAB:** *Kinematic motion models for simulation*
+
+The bicycle model approximates a car-like vehicle as two wheels on a centerline of length $L$ (wheelbase). With longitudinal speed $v$ and steering angle $\\delta$:
+
+$$\\dot{x} = v\\cos\\theta,\\quad \\dot{y} = v\\sin\\theta,\\quad \\dot\\theta = \\frac{v}{L}\\tan\\delta$$
+
+We sweep three steering schedules to illustrate the resulting trajectories.
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+L = 2.5
+dt, T = 0.05, 30.0
+N = int(T / dt)
+
+
+def simulate(v, delta_schedule):
+    state = np.zeros(3)
+    hist = np.zeros((N, 3))
+    for i in range(N):
+        delta = delta_schedule(i * dt)
+        state[0] += v * np.cos(state[2]) * dt
+        state[1] += v * np.sin(state[2]) * dt
+        state[2] += v * np.tan(delta) / L * dt
+        hist[i] = state
+    return hist
+
+
+t1 = simulate(2.0, lambda _: 0.2)
+t2 = simulate(2.0, lambda _: 0.4)
+t3 = simulate(2.0, lambda t: 0.3 * np.sin(0.4 * t))
+"""),
+        code("""fig, ax = plt.subplots(figsize=(9, 8))
+ax.plot(t1[:, 0], t1[:, 1], 'b-', lw=2, label='δ = 0.2 rad (gentle turn)')
+ax.plot(t2[:, 0], t2[:, 1], 'r-', lw=2, label='δ = 0.4 rad (tight turn)')
+ax.plot(t3[:, 0], t3[:, 1], 'g-', lw=2, label='δ = 0.3 sin(0.4 t) (slalom)')
+ax.set_aspect('equal'); ax.grid(); ax.legend()
+ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)')
+ax.set_title(f'Kinematic Bicycle Model — L = {L} m, v = 2 m/s')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("19_ground_vehicles_bicycle.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 20. Symbolic pendulum dynamics with SymPy
+# ---------------------------------------------------------------------------
+def nb_20_symbolic_dynamics():
+    cells = [
+        md("""# 20 — Symbolic Lagrangian Dynamics with SymPy
+
+**Section:** Robot Modeling · **Mirrors MATLAB:** *Simscape Tools for Modeling and Simulation of Physical Systems*
+
+We derive the equation of motion for a simple pendulum **symbolically** using SymPy, then convert the result into a fast numerical function with `lambdify` and integrate it.
+
+This mirrors MATLAB's Simscape / Symbolic Math Toolbox workflow: model in symbols, derive analytically, simulate numerically.
+"""),
+        code("""import sympy as sp
+import numpy as np
+import matplotlib.pyplot as plt
+
+t = sp.symbols('t')
+theta = sp.Function('theta')(t)
+m, L, g = sp.symbols('m L g', positive=True)
+
+# Position of the pendulum bob (theta measured from straight-down)
+x_p =  L * sp.sin(theta)
+y_p = -L * sp.cos(theta)
+
+KE = sp.Rational(1, 2) * m * (sp.diff(x_p, t) ** 2 + sp.diff(y_p, t) ** 2)
+PE = m * g * y_p
+
+Lagrangian = sp.simplify(KE - PE)
+print("Lagrangian L = T - V:")
+sp.pprint(sp.simplify(Lagrangian))
+"""),
+        code("""theta_dot  = sp.diff(theta, t)
+theta_ddot = sp.diff(theta, t, 2)
+
+EL = sp.diff(sp.diff(Lagrangian, theta_dot), t) - sp.diff(Lagrangian, theta)
+EL = sp.simplify(EL)
+print("Euler-Lagrange equation:")
+sp.pprint(EL)
+
+sol = sp.solve(EL, theta_ddot)[0]
+print("\\ntheta'' =")
+sp.pprint(sp.simplify(sol))
+"""),
+        code("""# Numerical integration
+f = sp.lambdify((theta, m, L, g), sol, 'numpy')
+
+
+def rhs(state, _t):
+    th, om = state
+    return np.array([om, f(th, 1.0, 1.0, 9.81)])
+
+
+dt_sim, T_sim = 0.01, 10.0
+N = int(T_sim / dt_sim)
+state = np.array([np.pi / 3, 0.0])  # initial 60° angle, zero rate
+hist = np.zeros((N, 2))
+for i in range(N):
+    hist[i] = state
+    k1 = rhs(state, i * dt_sim)
+    k2 = rhs(state + dt_sim * k1 / 2, i * dt_sim + dt_sim / 2)
+    k3 = rhs(state + dt_sim * k2 / 2, i * dt_sim + dt_sim / 2)
+    k4 = rhs(state + dt_sim * k3, i * dt_sim + dt_sim)
+    state = state + dt_sim * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+"""),
+        code("""t_arr = np.arange(N) * dt_sim
+fig, ax = plt.subplots(figsize=(11, 4))
+ax.plot(t_arr, np.degrees(hist[:, 0]), 'b-', label='angle (deg)')
+ax.plot(t_arr, np.degrees(hist[:, 1]), 'r--', lw=1, label='angular vel (deg/s)')
+ax.set_xlabel('time (s)'); ax.grid(); ax.legend()
+ax.set_title('Pendulum Dynamics — Lagrangian Derived with SymPy, Integrated with RK4')
+plt.tight_layout()
+plt.show()
+"""),
+    ]
+    write("20_modeling_symbolic_pendulum.ipynb", cells)
+
+
 def main():
     print(f"Generating notebooks in {NOTEBOOKS_DIR}")
     nb_01_astar()
@@ -848,6 +1583,16 @@ def main():
     nb_08_quadrotor_pid()
     nb_09_lane_detection()
     nb_10_occupancy_grid()
+    nb_11_icp()
+    nb_12_ekf_slam()
+    nb_13_dijkstra()
+    nb_14_dwa()
+    nb_15_stanley()
+    nb_16_jacobian_ik()
+    nb_17_orb()
+    nb_18_kalman_tracking()
+    nb_19_bicycle()
+    nb_20_symbolic_dynamics()
     print("Done.")
 
 

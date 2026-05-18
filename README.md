@@ -2,7 +2,9 @@
 
 A curated list of awesome libraries, frameworks, simulators, tutorials, and overall resources for the robotics community using **Python**. Inspired by and structured after [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) — same sections, Python ecosystem throughout.
 
-**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — see [`notebooks/`](notebooks/) for our growing collection (currently 10 fully runnable starter examples covering motion planning, localization, control, manipulation, UAV, perception, and mapping).
+**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **20 fully runnable examples** with embedded plots covering every major application area.
+
+[![Notebooks CI](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml/badge.svg)](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml)
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To track 1-for-1 coverage of the MATLAB source repo, see [TRACKING.md](TRACKING.md).
 
@@ -23,12 +25,22 @@ jupyter notebook notebooks/
 | 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | Localization |
 | 05 | [LQR inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
 | 06 | [Pure pursuit path tracking](notebooks/06_path_tracking_pure_pursuit.ipynb) | Path Tracking |
-| 07 | [2-link inverse kinematics](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation |
+| 07 | [2-link analytical IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation |
 | 08 | [Quadrotor PID](notebooks/08_uav_quadrotor_pid.ipynb) | UAV |
 | 09 | [Lane detection with OpenCV](notebooks/09_perception_lane_detection.ipynb) | Automated Driving |
 | 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | Mapping |
+| 11 | [ICP scan matching](notebooks/11_slam_icp.ipynb) | SLAM |
+| 12 | [EKF SLAM](notebooks/12_slam_ekf_slam.ipynb) | SLAM |
+| 13 | [Dijkstra](notebooks/13_motion_planning_dijkstra.ipynb) | Motion Planning |
+| 14 | [Dynamic Window Approach](notebooks/14_motion_planning_dwa.ipynb) | Motion Planning |
+| 15 | [Stanley path tracking](notebooks/15_path_tracking_stanley.ipynb) | Path Tracking |
+| 16 | [Jacobian-based 3-link IK](notebooks/16_manipulation_jacobian_ik.ipynb) | Manipulation |
+| 17 | [ORB feature matching](notebooks/17_perception_orb_features.ipynb) | Perception |
+| 18 | [Kalman target tracking](notebooks/18_perception_kalman_tracking.ipynb) | Perception |
+| 19 | [Kinematic bicycle model](notebooks/19_ground_vehicles_bicycle.ipynb) | Ground Vehicles |
+| 20 | [Symbolic Lagrangian dynamics (SymPy)](notebooks/20_modeling_symbolic_pendulum.ipynb) | Robot Modeling |
 
-To regenerate from the source script: `python scripts/build_notebooks.py`
+To regenerate from the source script: `python scripts/build_notebooks.py` (then `jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb` to refresh plots).
 
 ## Contents
 

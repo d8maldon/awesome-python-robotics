@@ -1,0 +1,53 @@
+name: Notebooks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'notebooks/**'
+      - 'scripts/build_notebooks.py'
+      - 'requirements.txt'
+      - '.github/workflows/notebooks.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'notebooks/**'
+      - 'scripts/build_notebooks.py'
+      - 'requirements.txt'
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install nbformat nbclient
+
+      - name: Execute committed notebooks (smoke test)
+        run: |
+          mkdir -p /tmp/executed
+          for nb in notebooks/*.ipynb; do
+            echo "::group::Executing $nb"
+            jupyter nbconvert --to notebook --execute "$nb" --output "/tmp/executed/$(basename $nb)" --ExecutePreprocessor.timeout=180
+            echo "::endgroup::"
+          done
+
+      - name: Verify build script runs without error
+        run: python scripts/build_notebooks.py
+
+      - name: Summary
+        run: |
+          echo "All 20 notebooks executed cleanly + build script verified."
+          ls /tmp/executed/ | wc -l
