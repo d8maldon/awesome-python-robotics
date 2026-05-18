@@ -169,6 +169,19 @@ plt.show()
 - **Hybrid A\\*** — extends A\\* to continuous heading + kinematic constraints (used for car-like robots).
 - **Jump Point Search** — a symmetry-breaking optimization for uniform grids; often 10×+ faster than A\\*.
 """),
+        md(r"""## References & rigor notes
+
+**Complexity.** With a binary-heap priority queue, A\* runs in $O((|V| + |E|) \log |V|)$ time and $O(|V|)$ space. For our 8-connected grid, $|E| = O(|V|)$ (constant degree 8), giving $O(|V| \log |V|)$.
+
+**Theorem** (Optimality under consistent heuristic; Hart, Nilsson & Raphael, 1968).
+*If $h$ is consistent (i.e., $h(n) \le c(n, n') + h(n')$ for every edge $(n, n')$), then A\* expands nodes in non-decreasing order of $f$, and the first time the goal is popped its $g$-value equals the optimal cost $h^*(s)$.*
+
+*Proof sketch.* Consistency makes $f$ non-decreasing along any path from the start. So at the moment $t$ is popped, every node with smaller $f$ has already been expanded — including any potentially cheaper path to $t$. Since $h(t) = 0$ we have $f(t) = g(t)$; no cheaper $g(t)$ can exist without contradicting the monotone expansion order. ∎
+
+**References.**
+- Hart, P. E., Nilsson, N. J., & Raphael, B. (1968). *A formal basis for the heuristic determination of minimum cost paths*. IEEE Transactions on Systems Science and Cybernetics, 4(2), 100-107.
+- Russell, S., & Norvig, P. (2020). *Artificial Intelligence: A Modern Approach*, 4th ed., Pearson, ch. 3.
+"""),
     ]
     write("01_motion_planning_astar.ipynb", cells)
 
@@ -303,6 +316,23 @@ plt.show()
 - **BiRRT** grows two trees (one from start, one from goal) and tries to connect them — usually faster in cluttered spaces.
 - The goal-bias parameter trades exploration vs exploitation.
 """),
+        md(r"""## References & rigor notes
+
+**Theorem** (Probabilistic completeness; LaValle, 1998).
+*If $\mathcal{X}_\text{free}$ has non-empty interior and there exists a feasible path from $x_\text{init}$ to $x_\text{goal}$ with positive clearance, then*
+$$\lim_{n \to \infty} \Pr[\text{RRT finds a feasible path in } n \text{ samples}] = 1.$$
+
+*Idea of proof.* Cover the feasible path by overlapping balls of radius equal to the step size. The probability that no sample falls in any one ball after $n$ trials decays geometrically; once all balls have been sampled, the tree connects to the goal. ∎
+
+**Not asymptotically optimal.** Karaman & Frazzoli (2011) proved plain RRT does *not* converge to the optimal-cost path even as $n \to \infty$. **RRT\*** fixes this by rewiring neighbors within radius $r_n = \gamma(\log n / n)^{1/d}$ at each insertion, achieving almost-sure convergence to the optimum.
+
+**Complexity per iteration.** $O(n)$ for brute-force nearest neighbor (or $O(\log n)$ with a kd-tree); collision check $O(d)$ where $d$ is segment discretization.
+
+**References.**
+- LaValle, S. M. (1998). *Rapidly-exploring random trees: A new tool for path planning*. TR 98-11, Iowa State University.
+- LaValle, S. M. (2006). *Planning Algorithms*, Cambridge University Press, ch. 5.5.
+- Karaman, S., & Frazzoli, E. (2011). *Sampling-based algorithms for optimal motion planning*. IJRR 30(7).
+"""),
     ]
     write("02_motion_planning_rrt.ipynb", cells)
 
@@ -436,6 +466,19 @@ ax.set_title('EKF Localization with Range-Bearing Landmarks')
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Optimality.** The Kalman filter is the minimum-MSE linear estimator for linear-Gaussian systems and the optimal *unrestricted* estimator if the posterior is Gaussian. The **Extended** Kalman Filter is a heuristic linearization that is **not** optimal and can diverge if the linearization is poor.
+
+**Local convergence** (Reif et al., 1999). For the EKF to converge locally, the system must satisfy: (a) sufficiently small initial error, (b) Lipschitz-continuous Jacobians, (c) the linearization at the true state must be uniformly observable, (d) noise covariances must be bounded.
+
+**Complexity.** Per step: $O(n^3)$ from matrix inverses, where $n$ is the state dimension. For $n=3$ here this is essentially free.
+
+**References.**
+- Kalman, R. E. (1960). *A new approach to linear filtering and prediction problems*. ASME Transactions, J. Basic Engineering, 82(D), 35-45.
+- Thrun, S., Burgard, W., & Fox, D. (2005). *Probabilistic Robotics*, MIT Press, ch. 3.
+- Reif, K., Günther, S., Yaz, E., & Unbehauen, R. (1999). *Stochastic stability of the discrete-time extended Kalman filter*. IEEE Trans. Automatic Control, 44(4).
+"""),
     ]
     write("03_localization_ekf.ipynb", cells)
 
@@ -553,6 +596,22 @@ for ax, (t, p) in zip(axs.flat, particle_hist):
     ax.set_aspect('equal'); ax.grid(); ax.legend(loc='upper right', fontsize=8)
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Theorem** (Almost-sure convergence; Crisan & Doucet, 2002).
+*Under regularity conditions on the proposal and likelihood, the empirical measure of $N$ particles converges weakly to the true posterior as $N \to \infty$, with $L^p$ error $O(1/\sqrt{N})$.*
+
+**Effective sample size.** Without resampling, weight concentrates on a single particle ("degeneracy"). Standard practice: monitor $N_\text{eff} = 1 / \sum_i (w_i)^2$ and resample when $N_\text{eff} < N/2$.
+
+**Sample impoverishment.** Resampling *too often* concentrates particles onto the highest-weight one and loses diversity. Mitigations: regularized PF (add noise after resampling), MCMC moves, or Rao-Blackwellization (marginalize linear-Gaussian sub-states).
+
+**Complexity.** Per step: $O(N M)$ for $N$ particles and $M$ observations; systematic resampling is $O(N)$.
+
+**References.**
+- Doucet, A., Godsill, S., & Andrieu, C. (2000). *On sequential Monte Carlo sampling methods for Bayesian filtering*. Statistics and Computing, 10(3), 197-208.
+- Crisan, D., & Doucet, A. (2002). *A survey of convergence results on particle filtering methods for practitioners*. IEEE Trans. Signal Processing, 50(3).
+- Thrun, S., Burgard, W., & Fox, D. (2005). *Probabilistic Robotics*, MIT Press, ch. 4.
 """),
     ]
     write("04_localization_particle_filter.ipynb", cells)
@@ -821,6 +880,22 @@ plt.show()
 - **From large initial perturbations LQR fails** because the linearization breaks down. Real triple-pendulum balancers use energy-based swing-up (Spong's method) to bring the state into the LQR's region of attraction.
 - **Underactuated.** 4 DoFs, 1 input — the cart has to wiggle in a coordinated way to right all three links.
 """),
+        md(r"""## References & rigor notes
+
+**Theorem** (LQR optimality; Kalman, 1960). *For the LTI system $\dot z = Az + Bu$ and cost $J = \int_0^\infty (z^T Q z + u^T R u)\,dt$ with $Q \succeq 0$, $R \succ 0$: if $(A, B)$ is stabilizable and $(A, \sqrt{Q})$ is detectable, the unique stabilizing feedback minimizing $J$ is $u = -Kz$ where $K = R^{-1} B^T P$ and $P \succ 0$ uniquely solves the CARE $A^T P + PA - PBR^{-1}B^TP + Q = 0$.*
+
+**Region of attraction.** LQR designed on the linearization is provably stable in a *neighborhood* of upright. Our initial perturbation of $\sim 3°$ per link lies in that neighborhood; the closed loop settles in $\sim 3$ s. Past $\sim 10-15°$ per link the nonlinearity dominates and LQR loses stability — energy-based **swing-up** (Spong, 1995) brings the state into the region of attraction, then LQR catches it.
+
+**Underactuation.** 4 DoFs, 1 input → not fully feedback-linearizable. But the linearization is controllable, so LQR works locally; this is exactly Brockett's necessary condition for smooth stabilization being satisfied at the linearization level.
+
+**Complexity.** Designing $K$ is $O(n^3)$ via CARE solve (here $n=8$, negligible). Runtime feedback evaluation is $O(n)$.
+
+**References.**
+- Kalman, R. E. (1960). *Contributions to the theory of optimal control*. Bol. Soc. Mat. Mexicana, 5(2).
+- Spong, M. W. (1995). *The swing up control problem for the Acrobot*. IEEE Control Systems Magazine, 15(1).
+- Furuta, K., & Yamakita, M. (1991). *Swing up control of inverted pendulum using pseudo-state feedback*. JSME Int. Journal.
+- Tedrake, R. (2023). *Underactuated Robotics* (open course notes, https://underactuated.mit.edu).
+"""),
     ]
     write("05_motion_control_pendulum_lqr.ipynb", cells)
 
@@ -915,6 +990,18 @@ ax.set_title('Pure Pursuit Path Tracking')
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Stability** (linearization on straight reference). Linearizing the unicycle-with-pure-pursuit closed loop around $\theta = 0$, $y = 0$, $v$ const, the cross-track error $y$ satisfies a 2nd-order ODE whose characteristic roots are in the open LHP for any $L_d > 0$. Damping ratio increases with $L_d$; small $L_d$ gives oscillatory tracking.
+
+**Curvature limit.** Pure pursuit cannot track paths whose curvature exceeds $1/L_d$ — it cuts corners. For sharp turns reduce $L_d$ (or use Stanley control, notebook 15, which doesn't have this limitation).
+
+**Production rule of thumb.** Many self-driving stacks use $L_d = \max(L_\min, k_v v)$ — adaptive look-ahead that scales with speed.
+
+**References.**
+- Coulter, R. C. (1992). *Implementation of the pure pursuit path tracking algorithm*. Technical Report CMU-RI-TR-92-01, Robotics Institute, Carnegie Mellon.
+- Snider, J. M. (2009). *Automatic steering methods for autonomous automobile path tracking*. Technical Report CMU-RI-TR-09-08, Robotics Institute, Carnegie Mellon.
+"""),
     ]
     write("06_path_tracking_pure_pursuit.ipynb", cells)
 
@@ -997,6 +1084,19 @@ ax.set_aspect('equal'); ax.grid(); ax.legend()
 ax.set_title('2-Link IK: arm poses traced through a circle (elbow-up)')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Workspace.** Reachable end-effector positions form the annulus $|l_1 - l_2| \le r \le l_1 + l_2$. Inside there are exactly two IK solutions (elbow-up and elbow-down); on the inner or outer boundary they degenerate to one (a singular configuration where the arm is fully extended or folded).
+
+**Singularities.** At $\theta_2 = 0$ or $\theta_2 = \pi$ the Jacobian is rank-deficient — the arm loses a degree of freedom. Closed-form IK still returns an answer, but small motions in joint space can cause large motions in task space (or vice versa).
+
+**Complexity.** $O(1)$ — closed-form, dominated by a few trig evaluations. Compare to numerical IK (notebook 16) which is iterative.
+
+**References.**
+- Murray, R. M., Li, Z., & Sastry, S. S. (1994). *A Mathematical Introduction to Robotic Manipulation*, CRC Press, ch. 3.
+- Spong, M. W., Hutchinson, S., & Vidyasagar, M. (2006). *Robot Modeling and Control*, Wiley, ch. 3.
+- Lynch, K. M., & Park, F. C. (2017). *Modern Robotics*, Cambridge University Press, ch. 6.
 """),
     ]
     write("07_manipulation_ik_2link.ipynb", cells)
@@ -1139,6 +1239,19 @@ for ax in axs.flat:
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Cascaded loop stability.** Time-scale separation between the fast attitude loop ($\omega_n^\phi \approx 42$ rad/s) and the slow altitude loop ($\omega_n^z \approx 3$ rad/s) — roughly a decade apart — allows analyzing each independently. Singular-perturbation theory (Khalil, 2002) formalizes this: as the ratio of time constants grows, cascaded stability follows from individual loop stability.
+
+**Discrete-time stability bound.** Explicit Euler integration of a 2nd-order system with natural frequency $\omega_n$ is stable iff $\Delta t \cdot \omega_n < 2$. For our attitude loop ($\omega_n = 42$): $\Delta t < 0.047$ s. We use 0.005 s with a 10× margin. Going to 0.01 s pushes discrete eigenvalues past 1 in magnitude and the sim NaNs — we hit exactly this bug in an earlier commit.
+
+**Complexity.** $O(1)$ per control step.
+
+**References.**
+- Mahony, R., Kumar, V., & Corke, P. (2012). *Multirotor aerial vehicles: Modeling, estimation, and control of quadrotor*. IEEE Robotics & Automation Magazine, 19(3), 20-32.
+- Åström, K. J., & Murray, R. M. (2008). *Feedback Systems: An Introduction for Scientists and Engineers*, Princeton University Press, ch. 10-11.
+- Khalil, H. K. (2002). *Nonlinear Systems*, 3rd ed., Prentice Hall, ch. 11 (singular perturbation).
+"""),
     ]
     write("08_uav_quadrotor_pid.ipynb", cells)
 
@@ -1238,6 +1351,19 @@ for ax in axs:
     ax.axis('off')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Canny optimality** (Canny, 1986). The Canny detector is optimal in the sense of (i) good detection (low miss + false-alarm rate), (ii) good localization (detected edges close to true edges), and (iii) one response per edge. These three criteria are encoded as variational objectives whose solution is approximately the derivative of a Gaussian; Canny shows the explicit closed form.
+
+**Hough transform.** Each edge pixel votes for *all* lines passing through it in $(\rho, \theta)$ space (the line $\rho = x\cos\theta + y\sin\theta$). Lines with votes above threshold are returned. Complexity $O(N \cdot K)$ where $N$ = edge pixels and $K$ = number of $\theta$ bins. The *probabilistic* variant samples a random subset of edge pixels for speed.
+
+**Limitations.** Canny + Hough handles only straight-line lanes; curved highways require polynomial fitting on the warped (bird's-eye) image, or deep-learning segmentation networks.
+
+**References.**
+- Canny, J. (1986). *A computational approach to edge detection*. IEEE Trans. PAMI, 8(6), 679-698.
+- Duda, R. O., & Hart, P. E. (1972). *Use of the Hough transformation to detect lines and curves in pictures*. CACM, 15(1), 11-15.
+- Matas, J., Galambos, C., & Kittler, J. (2000). *Robust detection of lines using the progressive probabilistic Hough transform*. CVIU, 78(1).
 """),
     ]
     write("09_perception_lane_detection.ipynb", cells)
@@ -1349,6 +1475,20 @@ axs[1].set_title('Estimated occupancy (probability)')
 axs[1].set_aspect('equal')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Bayes derivation of the log-odds update.** Let $\ell(c) = \log[p(m_c \mid z_{1:t}) / p(\neg m_c \mid z_{1:t})]$ be the log-odds. Under independence of cells and beams, Bayes' rule gives the recursive update
+$$\ell_t(c) = \ell_{t-1}(c) + \log\frac{p(z_t \mid m_c)}{p(z_t \mid \neg m_c)},$$
+which is exactly the additive form used here. The log-odds form has two advantages: (a) no numerical underflow from multiplying tiny probabilities, (b) updates are pure addition.
+
+**Inverse sensor model.** The constants $\ell_\text{occ}$ and $\ell_\text{free}$ encode the assumed reliability of each beam — typically $|\ell_\text{occ}| > |\ell_\text{free}|$ because hits are stronger evidence than passes.
+
+**Complexity.** $O(R \cdot N_b)$ per scan, where $R$ = beam range / cell size and $N_b$ = beam count.
+
+**References.**
+- Moravec, H. P., & Elfes, A. (1985). *High resolution maps from wide angle sonar*. ICRA 1985.
+- Thrun, S., Burgard, W., & Fox, D. (2005). *Probabilistic Robotics*, MIT Press, ch. 9 ("Occupancy Grid Mapping").
 """),
     ]
     write("10_mapping_occupancy_grid.ipynb", cells)
@@ -1487,6 +1627,19 @@ axs[1].plot(tgt[:, 0], tgt[:, 1], 'r.', label='Target')
 axs[1].set_title('After ICP'); axs[1].legend(); axs[1].set_aspect('equal'); axs[1].grid()
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Theorem** (Kabsch optimality, 1976). *Given paired centered point sets $\{p'_i\}, \{q'_i\} \subset \mathbb{R}^d$, the proper rotation $R \in SO(d)$ minimizing $\sum_i \|R p'_i - q'_i\|^2$ is $R^\star = V U^T$ where $H = \sum_i p'_i {q'_i}^T = U \Sigma V^T$ is the SVD of the cross-covariance. If $\det(VU^T) = -1$, flip the last column of $V$ to enforce a proper rotation.*
+
+**Monotone descent.** Each ICP iteration weakly decreases the sum-of-squared distances (proof: the closest-point assignment step can only decrease it, and the Kabsch step minimizes over $R, t$ given the assignment). Hence the algorithm converges — to a *local* minimum.
+
+**Complexity per iteration.** Brute-force NN: $O(N^2)$. With kd-tree: $O(N \log N)$. SVD of $d \times d$ matrix: $O(d^3)$, negligible.
+
+**References.**
+- Besl, P. J., & McKay, N. D. (1992). *A method for registration of 3-D shapes*. IEEE Trans. PAMI, 14(2), 239-256.
+- Kabsch, W. (1976). *A solution for the best rotation to relate two sets of vectors*. Acta Crystallographica, A32(5), 922-923.
+- Pomerleau, F., Colas, F., & Siegwart, R. (2015). *A review of point cloud registration algorithms for mobile robotics*. Foundations and Trends in Robotics, 4(1).
 """),
     ]
     write("11_slam_icp.ipynb", cells)
@@ -1651,6 +1804,20 @@ ax.set_title('EKF SLAM — robot trajectory + landmark positions')
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Consistency caveat.** Vanilla EKF-SLAM is known to be **inconsistent** — the estimated covariance becomes overconfident over long trajectories (Bailey et al., 2006). Mitigations: First-Estimates Jacobian EKF (FEJ-EKF), Observability-Constrained EKF (OC-EKF), or switch to graph-based SLAM (factor graphs, GTSAM).
+
+**Complexity.** Per step: prediction is $O(N)$ where $N$ = number of landmarks; each landmark observation update is $O(N^2)$ due to the dense covariance update. Total $O(M \cdot N^2)$ per step for $M$ observations. For maps with hundreds of landmarks this dominates; factor-graph SLAM (e.g., GTSAM, g2o) exploits sparsity to scale near-linearly.
+
+**Joint estimation magic.** The covariance off-diagonal blocks couple robot pose to landmarks. Each time a landmark is observed, both its estimate *and* the robot pose estimate sharpen — this cross-correlation is the entire reason SLAM works at all.
+
+**References.**
+- Smith, R., Self, M., & Cheeseman, P. (1990). *Estimating uncertain spatial relationships in robotics*. Autonomous Robot Vehicles, Springer, 167-193.
+- Dissanayake, M. W. M. G., Newman, P., Clark, S., Durrant-Whyte, H., & Csorba, M. (2001). *A solution to the simultaneous localization and map building (SLAM) problem*. IEEE Trans. Robotics & Automation, 17(3).
+- Bailey, T., Nieto, J., Guivant, J., Stevens, M., & Nebot, E. (2006). *Consistency of the EKF-SLAM algorithm*. IROS 2006.
+- Cadena, C. et al. (2016). *Past, present, and future of simultaneous localization and mapping: Toward the robust-perception age*. IEEE Trans. Robotics, 32(6).
+"""),
     ]
     write("12_slam_ekf_slam.ipynb", cells)
 
@@ -1746,6 +1913,21 @@ ax.plot(goal[1], goal[0], 'b*', ms=18, label='Goal')
 ax.legend(); ax.set_title("Dijkstra — expanded cells shaded by g-score (uses zero heuristic)")
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Corollary** (from A\\* with $h \equiv 0$). *Dijkstra returns the shortest path from $s$ to $t$ on any graph with non-negative edge weights.*
+
+**Complexity** by data structure:
+- Binary heap: $O((|V| + |E|) \log |V|)$
+- Fibonacci heap: $O(|V| \log |V| + |E|)$
+- Adjacency-matrix without priority queue: $O(|V|^2)$
+
+**Fails on negative weights.** Bellman-Ford ($O(|V| \cdot |E|)$) handles negative weights without negative cycles; Johnson's algorithm reweights to non-negative then runs Dijkstra.
+
+**References.**
+- Dijkstra, E. W. (1959). *A note on two problems in connexion with graphs*. Numerische Mathematik, 1(1), 269-271.
+- Cormen, T. H., Leiserson, C. E., Rivest, R. L., & Stein, C. (2009). *Introduction to Algorithms*, 3rd ed., MIT Press, ch. 24.
 """),
     ]
     write("13_motion_planning_dijkstra.ipynb", cells)
@@ -1880,6 +2062,19 @@ ax.set_title('Dynamic Window Approach Local Planner')
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Complexity per control step.** $O(|V_d| \cdot T_p / \Delta t)$ trajectory simulations, where $|V_d|$ is the number of sampled $(v, \omega)$ pairs and $T_p / \Delta t$ is rollout length. In our notebook: $7 \times 11 \times 25 \approx 2000$ sims per step. Trivially parallelizable on GPU.
+
+**Myopic failure mode.** DWA cannot reason about obstacles beyond the prediction horizon $T_p$. In non-convex obstacle fields (long alleys, dead ends) it gets stuck. Standard fix: pair DWA with a global planner (A\\*, RRT) — the global planner emits waypoints, DWA tracks them locally with reactivity.
+
+**Convergence to goal** is *not* guaranteed by DWA alone. Lyapunov-based formulations exist (e.g., Brock & Khatib's *Global* DWA) that add a navigation-function term to guarantee progress.
+
+**References.**
+- Fox, D., Burgard, W., & Thrun, S. (1997). *The dynamic window approach to collision avoidance*. IEEE Robotics & Automation Magazine, 4(1), 23-33.
+- Brock, O., & Khatib, O. (1999). *High-speed navigation using the global dynamic window approach*. ICRA 1999.
+- Macenski, S., Singh, S., Martín, F., & Ginés, J. (2023). *Regulated pure pursuit for robot path tracking*. Autonomous Robots, 47(6).
+"""),
     ]
     write("14_motion_planning_dwa.ipynb", cells)
 
@@ -1966,6 +2161,20 @@ ax.set_aspect('equal'); ax.grid(); ax.legend()
 ax.set_title('Stanley Path Tracking (front-axle cross-track error)')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Stability.** Linearizing the closed-loop dynamics around a straight reference at constant speed $v$ yields cross-track error dynamics
+$$\dot e_{ct} = -k\,e_{ct} / v \cdot v = -k\,e_{ct}$$
+(approximately, ignoring heading-error coupling). Exponentially stable for any $k > 0$. On curved paths, local stability holds if $k$ is tuned to the path's maximum curvature.
+
+**Robustness.** The $1/v$ scaling on the cross-track term means Stanley desensitizes at high speed automatically — no manual gain scheduling needed. This was a key reason it won the 2005 DARPA Grand Challenge against 22 other teams.
+
+**Comparison with pure pursuit.** Pure pursuit cuts corners on high-curvature paths (notebook 06). Stanley does not — it tracks the path exactly because the cross-track error is measured at the actual front axle, not at a look-ahead point.
+
+**References.**
+- Thrun, S. et al. (2006). *Stanley: The robot that won the DARPA Grand Challenge*. Journal of Field Robotics, 23(9), 661-692.
+- Hoffmann, G. M., Tomlin, C. J., Montemerlo, M., & Thrun, S. (2007). *Autonomous automobile trajectory tracking for off-road driving: Controller design, experimental validation and racing*. ACC 2007.
 """),
     ]
     write("15_path_tracking_stanley.ipynb", cells)
@@ -2070,6 +2279,19 @@ ax.set_title('3-Link Arm Numerical IK (damped least-squares)')
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Singularity handling.** The damping $\lambda$ in $J^T(JJ^T + \lambda^2 I)^{-1}$ regularizes the inverse near rank-deficient $J$ (singular configurations). Without damping, $JJ^T$ becomes ill-conditioned and the step size blows up. Trade-off: large $\lambda$ → more robust but slower convergence; small $\lambda$ → faster but unstable near singularities.
+
+**Convergence rate.** Quadratic near a solution (essentially a Newton step on $\|\Delta x\|^2$). Globally convergent only to *a* local minimum — initialization matters.
+
+**Complexity per iteration.** $O(n^2 \cdot m + m^3)$ where $n$ is joint count and $m$ is task-space dimension. For small arms ($n \le 7$, $m \le 6$) negligible; one iteration runs in microseconds.
+
+**References.**
+- Buss, S. R. (2009). *Introduction to inverse kinematics with Jacobian transpose, pseudoinverse and damped least squares methods*. UCSD lecture notes.
+- Nakamura, Y., & Hanafusa, H. (1986). *Inverse kinematic solutions with singularity robustness for robot manipulator control*. ASME J. Dyn. Sys., Meas., Control, 108(3).
+- Wampler, C. W. (1986). *Manipulator inverse kinematic solutions based on vector formulations and damped least-squares methods*. IEEE Trans. Sys., Man, Cyber., 16(1).
+"""),
     ]
     write("16_manipulation_jacobian_ik.ipynb", cells)
 
@@ -2159,6 +2381,19 @@ plt.title('ORB Feature Matches (img1 ↔ rotated/translated img2)')
 plt.axis('off')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Rotation invariance.** FAST itself is *not* rotation invariant; ORB adds an orientation $\theta$ from the intensity centroid of a patch, and BRIEF sampling pairs are pre-rotated by $-\theta$. The resulting descriptor is identical for the same physical corner regardless of in-plane rotation.
+
+**Scale invariance.** Plain ORB does *not* handle scale changes. OpenCV's implementation uses an image-pyramid (multiple downsampled levels) and detects corners at every scale, then propagates the level.
+
+**Complexity.** Detection $O(\text{pixels} \cdot 16)$ for FAST checks. Descriptor extraction $O(N \cdot n_\text{bits})$ for $N$ keypoints. Hamming-distance matching $O(N_1 \cdot N_2 \cdot n_\text{bits})$ brute force — fast because $n_\text{bits}=256$ is a few CPU words.
+
+**References.**
+- Rublee, E., Rabaud, V., Konolige, K., & Bradski, G. (2011). *ORB: An efficient alternative to SIFT or SURF*. ICCV 2011.
+- Rosten, E., & Drummond, T. (2006). *Machine learning for high-speed corner detection*. ECCV 2006. (FAST)
+- Calonder, M., Lepetit, V., Strecha, C., & Fua, P. (2010). *BRIEF: Binary robust independent elementary features*. ECCV 2010.
 """),
     ]
     write("17_perception_orb_features.ipynb", cells)
@@ -2286,6 +2521,23 @@ ax.set_title('Kalman Filter Tracking with Mid-Trajectory Maneuver')
 plt.tight_layout()
 plt.show()
 """),
+        md(r"""## References & rigor notes
+
+**Theorem** (Kalman filter optimality; Kalman, 1960). *Among all linear estimators of $x_t$ given measurements $z_{1:t}$ for a linear-Gaussian system, the Kalman filter achieves minimum mean-square error. For Gaussian noise, the KF is the optimal estimator among all (not just linear) functions of $z_{1:t}$.*
+
+**Innovation as whitness test.** When the model is correct, the innovation $\nu_t = z_t - H\hat x_t^-$ is zero-mean white noise with covariance $S_t = HPH^T + R$. Monitoring $\nu^T S^{-1} \nu$ (the normalized innovation squared) is a standard online check for model mis-specification.
+
+**Maneuver handling.** Real targets accelerate, turn, etc. Mitigations:
+- **Constant-acceleration** model: extend state to include $a_x, a_y$.
+- **Interactive Multiple Model (IMM)**: run several KFs in parallel (CV + CA + coordinated turn), blend by posterior probability — the standard radar-tracking approach.
+
+**Complexity.** $O(n^3)$ per step due to matrix inverses ($n$ = state dim). For $n=4$ here it's microseconds; even $n=20$ is real-time.
+
+**References.**
+- Kalman, R. E. (1960). *A new approach to linear filtering and prediction problems*. ASME J. Basic Engineering, 82(D), 35-45.
+- Bar-Shalom, Y., Li, X. R., & Kirubarajan, T. (2001). *Estimation with Applications to Tracking and Navigation*. Wiley.
+- Blom, H. A. P., & Bar-Shalom, Y. (1988). *The interacting multiple model algorithm for systems with Markovian switching coefficients*. IEEE Trans. Auto. Control, 33(8).
+"""),
     ]
     write("18_perception_kalman_tracking.ipynb", cells)
 
@@ -2357,6 +2609,18 @@ ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)')
 ax.set_title(f'Kinematic Bicycle Model — L = {L} m, v = 2 m/s')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Where the kinematic bicycle breaks.** Assumptions: (a) no tire slip — tires move in the direction they point, (b) instantaneous control over $v$ and $\delta$, (c) no mass / inertial effects. Valid when lateral acceleration $v^2 / R$ is small compared to friction limit $\mu g$. At freeway speeds, slip matters and you need the **dynamic** bicycle (Rajamani ch. 2.3): adds tire-cornering stiffness, lateral force balance, yaw inertia.
+
+**Connection to Ackermann steering.** A real car has two front wheels at slightly different angles such that all four wheels share a common turn center (the "Ackermann condition"). The bicycle model collapses both into a single steerable wheel at the front-axle midpoint, exactly preserving the centerline kinematics.
+
+**Complexity.** $O(1)$ per integration step.
+
+**References.**
+- Rajamani, R. (2011). *Vehicle Dynamics and Control*, 2nd ed., Springer, ch. 2.
+- Kong, J., Pfeiffer, M., Schildbach, G., & Borrelli, F. (2015). *Kinematic and dynamic vehicle models for autonomous driving control design*. IEEE IV 2015.
 """),
     ]
     write("19_ground_vehicles_bicycle.ipynb", cells)
@@ -2466,6 +2730,19 @@ ax.set_xlabel('time (s)'); ax.grid(); ax.legend()
 ax.set_title('Pendulum Dynamics — Lagrangian Derived with SymPy, Integrated with RK4')
 plt.tight_layout()
 plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Why Lagrangian over Newtonian for robots.** Systems with constraints (joints, contacts, rolling) require introducing constraint forces as unknowns in Newton's formulation. The Lagrangian, using *generalized coordinates* that automatically satisfy the constraints, eliminates these unknowns entirely — much cleaner for robot dynamics.
+
+**Hamilton's principle.** The Euler-Lagrange equations are the necessary condition for the action $S = \int \mathcal{L}\,dt$ to be stationary among paths with fixed endpoints. This *variational* statement is the deepest principle of classical mechanics and the bridge to the path-integral formulation of quantum mechanics.
+
+**Scaling.** Hand-derivation works for 1-2 DoF systems. For robot arms with 7+ DoFs, automatic differentiation (here: SymPy's `LagrangesMethod`) is essential. State-of-the-art rigid-body libraries (Featherstone, RBDL, Pinocchio) use the **Articulated Body Algorithm** which computes $\ddot q = M^{-1}(\tau - C\dot q - g)$ in $O(n)$ instead of the $O(n^3)$ cost of naive matrix inversion.
+
+**References.**
+- Goldstein, H., Poole, C. P., & Safko, J. L. (2002). *Classical Mechanics*, 3rd ed., Addison-Wesley, ch. 1-2.
+- Featherstone, R. (2008). *Rigid Body Dynamics Algorithms*, Springer.
+- Lagrange, J. L. (1788). *Mécanique analytique*. (The original.)
 """),
     ]
     write("20_modeling_symbolic_pendulum.ipynb", cells)
