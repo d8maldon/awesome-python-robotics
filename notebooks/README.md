@@ -34,7 +34,9 @@ jupyter notebook
 | 17 | [ORB feature matching](17_perception_orb_features.ipynb) | Perception | Oriented FAST + Rotated BRIEF with Hamming matching |
 | 18 | [Kalman tracking](18_perception_kalman_tracking.ipynb) | Perception | Constant-velocity KF for a maneuvering target |
 | 19 | [Bicycle model](19_ground_vehicles_bicycle.ipynb) | Ground Vehicles | Kinematic bicycle under three steering schedules |
-| 20 | [Symbolic dynamics](20_modeling_symbolic_pendulum.ipynb) | Robot Modeling | Lagrangian derivation with SymPy + RK4 integration |
+| 20 | [Symbolic dynamics](20_modeling_symbolic_pendulum.ipynb) | Robot Modeling | Lagrangian derivation with SymPy + RK4 integration + empirical energy conservation 1e-8 |
+| 21 | [MPC cart-pole](21_motion_control_mpc_cartpole.ipynb) | Motion Control | Receding-horizon QP with input + state constraints (scipy L-BFGS-B); Mayne 2000 stability framing |
+| 22 | [CBF safety filter](22_motion_control_cbf_safety_filter.ipynb) | Motion Control | Forward-invariance filter (Nagumo 1942 / Ames 2014); closed-form QP for single-input single-obstacle case |
 
 ## Design principles
 

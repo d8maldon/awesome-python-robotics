@@ -2,7 +2,7 @@
 
 A curated list of awesome libraries, frameworks, simulators, tutorials, and overall resources for the robotics community using **Python**. Inspired by and structured after [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) — same sections, Python ecosystem throughout.
 
-**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **20 fully runnable examples** with embedded plots covering every major application area, plus **4 interactive pygame demos** you can drive in real time.
+**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **22 fully runnable examples** with embedded plots covering every major application area, plus **4 interactive pygame demos** you can drive in real time.
 
 [![Notebooks CI](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml/badge.svg)](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml)
 
@@ -11,6 +11,8 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To track 1-for-1 
 ## Featured Demos
 
 Animated GIFs from selected notebooks — click through to the full notebook with math + code.
+
+> **⭐ Flagship notebooks**: **[05 Triple-Link LQR Pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb)** (sympy.physics.mechanics → CARE → Lyapunov sublevel-set ROA verification on nonlinear dynamics) and **[20 SymPy Lagrangian Pendulum](notebooks/20_modeling_symbolic_pendulum.ipynb)** (Lagrangian derivation + RK4 integration + empirical energy conservation 10⁻⁸ + elliptic-integral period validation 1.072× linear). These are the strongest "math first, code second" demonstrations in the repo.
 
 <table>
 <tr>
@@ -106,6 +108,8 @@ jupyter notebook notebooks/
 | 18 | [Kalman target tracking](notebooks/18_perception_kalman_tracking.ipynb) | Perception |
 | 19 | [Kinematic bicycle model](notebooks/19_ground_vehicles_bicycle.ipynb) | Ground Vehicles |
 | 20 | [Symbolic Lagrangian dynamics (SymPy)](notebooks/20_modeling_symbolic_pendulum.ipynb) | Robot Modeling |
+| 21 | [MPC for cart-pole](notebooks/21_motion_control_mpc_cartpole.ipynb) | Motion Control |
+| 22 | [CBF safety filter](notebooks/22_motion_control_cbf_safety_filter.ipynb) | Motion Control |
 
 To regenerate from the source script: `python scripts/build_notebooks.py` (then `jupyter nbconvert --to notebook --execute --inplace notebooks/*.ipynb` to refresh plots).
 

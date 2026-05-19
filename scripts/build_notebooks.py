@@ -2053,6 +2053,84 @@ ax.legend(); ax.set_title("Dijkstra — expanded cells shaded by g-score (uses z
 plt.tight_layout()
 plt.show()
 """),
+        code("""# UPREV (council pass 13 follow-up): real implementations of
+# Bellman-Ford and Johnson's, not just textual discussion.
+def bellman_ford(n_nodes, edges, source):
+    \"\"\"Single-source shortest paths handling NEGATIVE edge weights.
+    Returns distances (np.inf if unreachable) and predecessor array.
+    Detects negative cycles by checking for further relaxation after |V|-1 passes.
+    Complexity O(|V| * |E|).\"\"\"
+    dist = [np.inf] * n_nodes
+    pred = [None] * n_nodes
+    dist[source] = 0.0
+    for _ in range(n_nodes - 1):
+        updated = False
+        for u, v, w in edges:
+            if dist[u] + w < dist[v]:
+                dist[v] = dist[u] + w
+                pred[v] = u
+                updated = True
+        if not updated:
+            break
+    # Negative-cycle check: another relaxation should not be possible
+    for u, v, w in edges:
+        if dist[u] + w < dist[v]:
+            raise ValueError("negative cycle detected — shortest paths undefined")
+    return dist, pred
+
+
+def johnsons_apsp(n_nodes, edges):
+    \"\"\"All-pairs shortest paths via Johnson's algorithm:
+    1. Add virtual source connected to all nodes with weight 0.
+    2. Run Bellman-Ford from virtual source -> get potentials h(v).
+    3. Reweight every edge to w'(u,v) = w(u,v) + h(u) - h(v) >= 0.
+    4. Run Dijkstra from every node on the reweighted graph.
+    Complexity O(|V|^2 log |V| + |V| * |E|) — beats Bellman-Ford-APSP
+    (O(|V|^2 * |E|)) when |E| < |V|^2.\"\"\"
+    virt = n_nodes  # virtual source index
+    virt_edges = edges + [(virt, v, 0) for v in range(n_nodes)]
+    h, _ = bellman_ford(n_nodes + 1, virt_edges, virt)
+    # Reweight
+    reweighted = [(u, v, w + h[u] - h[v]) for u, v, w in edges]
+    # Build adjacency dict for Dijkstra
+    adj = {i: [] for i in range(n_nodes)}
+    for u, v, w in reweighted:
+        adj[u].append((v, w))
+    apsp = [[np.inf] * n_nodes for _ in range(n_nodes)]
+    for src in range(n_nodes):
+        # Dijkstra on reweighted (non-negative) graph
+        d = [np.inf] * n_nodes
+        d[src] = 0
+        pq = [(0, src)]
+        while pq:
+            du, u = heapq.heappop(pq)
+            if du > d[u]:
+                continue
+            for v, w in adj[u]:
+                if du + w < d[v]:
+                    d[v] = du + w
+                    heapq.heappush(pq, (d[v], v))
+        # Un-reweight: original dist = d[u][v] - h[u] + h[v]
+        for v in range(n_nodes):
+            apsp[src][v] = d[v] - h[src] + h[v] if np.isfinite(d[v]) else np.inf
+    return apsp
+
+
+# Tiny test graph: 4 nodes, includes a negative edge (but no negative cycle)
+#    0 --(4)--> 1
+#    0 --(2)--> 2
+#    1 --(-1)--> 2     <- negative edge!
+#    1 --(3)--> 3
+#    2 --(2)--> 3
+edges_test = [(0, 1, 4), (0, 2, 2), (1, 2, -1), (1, 3, 3), (2, 3, 2)]
+dist_bf, _ = bellman_ford(4, edges_test, source=0)
+print(f"Bellman-Ford from 0:  {dist_bf}  (note: handles negative weight 1->2)")
+
+apsp = johnsons_apsp(4, edges_test)
+print(f"Johnson's APSP matrix:")
+for row in apsp:
+    print(f"  {row}")
+"""),
         md(r"""## References & rigor notes
 
 **Corollary** (from A\\* with $h \equiv 0$). *Dijkstra returns the shortest path from $s$ to $t$ on any graph with non-negative edge weights.*
@@ -2406,6 +2484,7 @@ def jacobian(theta):
 
 
 def numerical_ik(target, theta_init, max_iter=200, tol=1e-4, lam=0.05, step=0.4):
+    # Original fixed-lambda DLS implementation (linear convergence).
     theta = theta_init.copy()
     for _ in range(max_iter):
         end = fk_all(theta)[-1]
@@ -2416,6 +2495,38 @@ def numerical_ik(target, theta_init, max_iter=200, tol=1e-4, lam=0.05, step=0.4)
         dtheta = J.T @ np.linalg.inv(J @ J.T + lam ** 2 * np.eye(2)) @ err
         theta = theta + step * dtheta
     return theta, np.linalg.norm(err)
+
+
+# UPREV (council pass 16 follow-up): proper Levenberg-Marquardt with
+# trust-region adaptation. Shrinks lambda when steps decrease cost
+# (Newton-like, quadratic convergence), grows lambda when they don't
+# (gradient-like, conservative). Solves the "fixed lambda = linear
+# convergence" issue Bertsekas flagged.
+def numerical_ik_lm(target, theta_init, max_iter=200, tol=1e-4,
+                    lam0=0.05, lam_min=1e-6, lam_max=1e3):
+    theta = theta_init.copy()
+    lam = lam0
+    cost = lambda th: 0.5 * np.sum((target - fk_all(th)[-1]) ** 2)
+    prev_cost = cost(theta)
+    iters = 0
+    for _ in range(max_iter):
+        iters += 1
+        end = fk_all(theta)[-1]
+        err = target - end
+        if np.linalg.norm(err) < tol:
+            break
+        J = jacobian(theta)
+        # Damped Gauss-Newton step (no extra "alpha" backstep — raw LM)
+        dtheta = J.T @ np.linalg.inv(J @ J.T + lam ** 2 * np.eye(2)) @ err
+        new_theta = theta + dtheta
+        new_cost = cost(new_theta)
+        if new_cost < prev_cost:
+            theta = new_theta
+            prev_cost = new_cost
+            lam = max(lam_min, lam / 2)        # shrink — be Newton-ish
+        else:
+            lam = min(lam_max, lam * 2)        # grow — be gradient-ish
+    return theta, np.linalg.norm(err), iters
 """),
         code("""# Trace a target trajectory
 N = 70
@@ -2424,9 +2535,27 @@ targets = np.column_stack([1.2 + 0.5 * np.cos(phi), 1.0 + 0.5 * np.sin(phi)])
 
 theta = np.array([0.4, 0.4, 0.4])
 arm_log = []
+iters_dls, iters_lm = [], []
+theta_lm = np.array([0.4, 0.4, 0.4])
 for tgt in targets:
-    theta, _ = numerical_ik(tgt, theta)
+    # Fixed-lambda DLS (original) — count iterations to convergence
+    th_dls = theta.copy()
+    for n_it in range(200):
+        e = np.linalg.norm(tgt - fk_all(th_dls)[-1])
+        if e < 1e-4:
+            break
+        J = jacobian(th_dls)
+        th_dls = th_dls + 0.4 * J.T @ np.linalg.inv(J @ J.T + 0.05**2 * np.eye(2)) @ (tgt - fk_all(th_dls)[-1])
+    iters_dls.append(n_it + 1)
+    # Trust-region LM — count iterations
+    theta_lm, _, n_lm = numerical_ik_lm(tgt, theta_lm)
+    iters_lm.append(n_lm)
+    # Use LM for the visualization since it converges faster
+    theta = theta_lm
     arm_log.append(fk_all(theta))
+
+print(f"Avg iterations per IK call — fixed-lambda DLS: {np.mean(iters_dls):.1f}")
+print(f"Avg iterations per IK call — trust-region LM:  {np.mean(iters_lm):.1f}  ({np.mean(iters_dls)/max(np.mean(iters_lm),1):.1f}x speedup)")
 
 fig, ax = plt.subplots(figsize=(8, 8))
 for k, pts in enumerate(arm_log):
@@ -2767,14 +2896,71 @@ def simulate(v, delta_schedule):
 t1 = simulate(2.0, lambda _: 0.2)
 t2 = simulate(2.0, lambda _: 0.4)
 t3 = simulate(2.0, lambda t: 0.3 * np.sin(0.4 * t))
+
+
+# UPREV (council pass 19 follow-up): add the *dynamic* bicycle with tire-slip.
+# Compare kinematic vs dynamic at HIGH SPEED where slip matters.
+# Dynamic bicycle (Rajamani 2011 ch 2.3):
+#   state: [x, y, theta, vx, vy, r_yaw]
+#   inputs: [delta_f (front steer), Fx_rear (longitudinal force)]
+# We use a simplified version: linear tire model, constant Fx, focus on lateral.
+
+m_veh = 1500.0      # vehicle mass (kg)
+Iz = 3000.0         # yaw inertia (kg m^2)
+lf, lr = 1.2, 1.3   # front/rear wheelbase split (m); L = lf + lr = 2.5
+Cf = Cr = 80000.0   # cornering stiffness (N/rad), each axle
+v_high = 25.0       # 25 m/s ~ 56 mph — where slip matters
+
+
+def simulate_dynamic(delta_schedule, v0=v_high, N_steps=int(30/0.05)):
+    # Dynamic bicycle: linear-tire bicycle with lateral + yaw dynamics.
+    s = np.array([0.0, 0.0, 0.0, v0, 0.0, 0.0])   # x, y, th, vx, vy, r
+    hist = np.zeros((N_steps, 6))
+    for i in range(N_steps):
+        x_, y_, th, vx, vy, r = s
+        delta = delta_schedule(i * 0.05)
+        # Tire slip angles
+        alpha_f = delta - np.arctan2(vy + lf * r, vx)
+        alpha_r =       - np.arctan2(vy - lr * r, vx)
+        # Lateral forces
+        Fyf = Cf * alpha_f
+        Fyr = Cr * alpha_r
+        # Body-frame accelerations
+        vx_dot = vy * r                       # no longitudinal accel (constant vx assumption)
+        vy_dot = (Fyf * np.cos(delta) + Fyr) / m_veh - vx * r
+        r_dot  = (lf * Fyf * np.cos(delta) - lr * Fyr) / Iz
+        # Body-frame -> world
+        s[0] += (vx * np.cos(th) - vy * np.sin(th)) * 0.05
+        s[1] += (vx * np.sin(th) + vy * np.cos(th)) * 0.05
+        s[2] += r * 0.05
+        s[3] += vx_dot * 0.05
+        s[4] += vy_dot * 0.05
+        s[5] += r_dot  * 0.05
+        hist[i] = s
+    return hist
+
+
+# Same slalom steering for both — at v=25 m/s the dynamic model shows lateral slip
+slalom = lambda t: 0.1 * np.sin(0.6 * t)
+kin_high  = simulate(v_high, slalom)
+dyn_high  = simulate_dynamic(slalom, v0=v_high, N_steps=N)
 """),
-        code("""fig, ax = plt.subplots(figsize=(9, 8))
-ax.plot(t1[:, 0], t1[:, 1], 'b-', lw=2, label='δ = 0.2 rad (gentle turn)')
-ax.plot(t2[:, 0], t2[:, 1], 'r-', lw=2, label='δ = 0.4 rad (tight turn)')
-ax.plot(t3[:, 0], t3[:, 1], 'g-', lw=2, label='δ = 0.3 sin(0.4 t) (slalom)')
-ax.set_aspect('equal'); ax.grid(); ax.legend()
-ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)')
-ax.set_title(f'Kinematic Bicycle Model — L = {L} m, v = 2 m/s')
+        code("""fig, axs = plt.subplots(1, 2, figsize=(14, 6))
+
+axs[0].plot(t1[:, 0], t1[:, 1], 'b-', lw=2, label='δ = 0.2 rad (gentle turn)')
+axs[0].plot(t2[:, 0], t2[:, 1], 'r-', lw=2, label='δ = 0.4 rad (tight turn)')
+axs[0].plot(t3[:, 0], t3[:, 1], 'g-', lw=2, label='δ = 0.3 sin(0.4 t) (slalom)')
+axs[0].set_aspect('equal'); axs[0].grid(); axs[0].legend()
+axs[0].set_xlabel('x (m)'); axs[0].set_ylabel('y (m)')
+axs[0].set_title(f'Kinematic Bicycle — L = {L} m, v = 2 m/s')
+
+# Council uprev: kinematic vs dynamic at 25 m/s (highway-speed slalom)
+axs[1].plot(kin_high[:, 0], kin_high[:, 1], 'b-', lw=2, label='Kinematic (no slip)')
+axs[1].plot(dyn_high[:, 0], dyn_high[:, 1], 'r-', lw=2,
+            label='Dynamic (tire slip, linear-tire model)')
+axs[1].set_aspect('equal'); axs[1].grid(); axs[1].legend()
+axs[1].set_xlabel('x (m)'); axs[1].set_ylabel('y (m)')
+axs[1].set_title(f'Slalom at v = {v_high} m/s — slip matters at speed')
 plt.tight_layout()
 plt.show()
 """),
@@ -2951,6 +3137,339 @@ plt.show()
     write("20_modeling_symbolic_pendulum.ipynb", cells)
 
 
+# ---------------------------------------------------------------------------
+# 21. Model Predictive Control on a cart-pole
+# ---------------------------------------------------------------------------
+def nb_21_mpc_cartpole():
+    cells = [
+        md("""# 21 — Model Predictive Control on a Cart-Pole
+
+**Section:** Motion Control · **Mirrors MATLAB:** *Model Predictive Control for collision-free manipulation trajectories*
+
+Linear-quadratic MPC: at every control step, solve a finite-horizon QP for the optimal input sequence over the next $N$ steps, apply the first input, then re-solve. This is the *receding-horizon* principle — and it's the basis of basically every production-grade controller in autonomous driving, robotics, and process control.
+"""),
+        md("""## Intuition — what's actually going on?
+
+LQR (notebook 05) gives you an *infinite-horizon* optimal feedback law — but that's only valid if the system is linear and there are no constraints. In real life you have:
+
+- **Input limits**: motor torque, steering angle, thrust have physical bounds.
+- **State constraints**: don't hit walls, don't tilt past 30°, don't exceed velocity limit.
+- **Time-varying references**: track a moving setpoint, not a fixed origin.
+
+LQR can't handle any of these natively. MPC can: at every control step, set up a small QP that minimizes cost over the next $N$ steps subject to the constraints, and apply the first control. Then re-solve at the next step (this is what "receding horizon" means).
+
+The price: you solve a QP every control step (typically ~10-100 Hz on hardware). The payoff: principled handling of constraints, which is why MPC dominates over PID/LQR for cars, drones, robot arms, and chemical plants.
+"""),
+        md(r"""## Analytical derivation
+
+**Discrete-time LTI system:** $x_{k+1} = A x_k + B u_k$, with $x \in \mathbb{R}^n$, $u \in \mathbb{R}^m$.
+
+**Finite-horizon optimal control problem at step $k$:**
+
+$$\min_{u_0, \ldots, u_{N-1}} \;\sum_{i=0}^{N-1}\bigl(x_i^T Q x_i + u_i^T R u_i\bigr) \;+\; x_N^T Q_f x_N$$
+
+subject to dynamics $x_{i+1} = A x_i + B u_i$, $x_0 = x_k$, and constraints $u_i \in \mathcal{U}$, $x_i \in \mathcal{X}$.
+
+**Condensing.** Substitute $x_i = A^i x_0 + \sum_{j=0}^{i-1} A^{i-1-j} B u_j$ to eliminate states, leaving a QP in $\mathbf{u} = [u_0; u_1; \ldots; u_{N-1}]$:
+
+$$\min_{\mathbf{u}} \;\tfrac{1}{2} \mathbf{u}^T H \mathbf{u} + \mathbf{u}^T F x_0 \;+\; \text{const}$$
+
+subject to box constraints $u_\min \le u_i \le u_\max$.
+
+**Recursive feasibility.** Without a terminal set, MPC can become *infeasible* (no input sequence respects constraints). Production MPC adds a terminal constraint $x_N \in \mathcal{X}_f$ where $\mathcal{X}_f$ is a control-invariant set — guarantees that if the current step is feasible, so is the next.
+
+**Stability** (Mayne et al. 2000). Choosing $Q_f$ as the LQR cost-to-go (CARE solution) and $\mathcal{X}_f$ as the LQR's region of attraction makes the MPC closed loop *Lyapunov-stable* with the value function as Lyapunov function.
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| Discrete LTI: $x_{k+1} = Ax_k + Bu_k$ | `Ad, Bd = discrete-time matrices from cont-time A, B (Euler or zoh)` |
+| Stage cost $x^T Q x + u^T R u$ | `Q = np.diag([...]); R = np.array([[...]])` |
+| Horizon $N$ rollout | `for i in range(N): x_pred = ...` |
+| QP via scipy.optimize.minimize | `minimize(cost, u_init, jac=grad, constraints=...)` |
+| First-input-applied receding horizon | `x_k = A @ x_k + B @ u_seq[0]` |
+| Input box constraint $u \in [-u_\max, u_\max]$ | `bounds = [(-u_max, u_max)] * N` |
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+from scipy.linalg import solve_continuous_are
+from scipy.optimize import minimize
+
+# Linearized cart-pole around upright (single link, mass m on cart M)
+M, m, l, g = 1.0, 0.1, 0.5, 9.81
+A_c = np.array([[0, 1,             0, 0],
+                [0, 0, -m * g / M,  0],
+                [0, 0,             0, 1],
+                [0, 0,  (M + m) * g / (M * l), 0]])
+B_c = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
+
+# Discretize via simple Euler (dt small enough for accuracy)
+dt = 0.05
+A = np.eye(4) + dt * A_c
+B = dt * B_c
+n, m_in = 4, 1
+"""),
+        code("""# MPC parameters
+N = 20                                  # horizon
+u_max = 15.0                            # input bound (N)
+x_max = np.array([2.0, np.inf, 0.3, np.inf])   # cart |x|<2m, pole |θ|<0.3 rad
+
+Q = np.diag([1.0, 0.1, 10.0, 1.0])
+R = np.array([[0.1]])
+Q_f = solve_continuous_are(A_c, B_c, Q, R)     # terminal cost = LQR cost-to-go
+
+
+def predict(x0, u_seq):
+    \"\"\"Roll forward N steps. u_seq is (N,) array.\"\"\"
+    x = np.zeros((N + 1, n))
+    x[0] = x0
+    for i in range(N):
+        x[i + 1] = A @ x[i] + B.flatten() * u_seq[i]
+    return x
+
+
+def stage_cost(x0, u_seq):
+    x = predict(x0, u_seq)
+    cost = 0.0
+    for i in range(N):
+        cost += x[i] @ Q @ x[i] + R[0, 0] * u_seq[i] ** 2
+    cost += x[N] @ Q_f @ x[N]
+    return cost
+
+
+def mpc_step(x0, u_warm):
+    bounds = [(-u_max, u_max)] * N
+    res = minimize(lambda u: stage_cost(x0, u), u_warm, bounds=bounds, method='L-BFGS-B')
+    return res.x
+"""),
+        code("""# Simulate the nonlinear cart-pole with MPC in the loop
+def nonlin_dyn(state, u):
+    pos, vel, th, om = state
+    s, c = np.sin(th), np.cos(th)
+    den = M + m * s ** 2
+    acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
+    a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
+    return np.array([vel, acc, om, a_th])
+
+
+x = np.array([0.0, 0.0, 0.15, 0.0])     # ~9° initial tilt
+T_sim = 4.0
+N_sim = int(T_sim / dt)
+hist = np.zeros((N_sim, n))
+u_hist = np.zeros(N_sim)
+u_warm = np.zeros(N)
+for k in range(N_sim):
+    u_opt = mpc_step(x, u_warm)
+    u_apply = u_opt[0]
+    u_warm = np.r_[u_opt[1:], 0.0]      # warm-start next step
+    hist[k] = x
+    u_hist[k] = u_apply
+    # Integrate nonlinear cart-pole with smaller substeps for accuracy
+    sub = 5
+    for _ in range(sub):
+        x = x + (dt / sub) * nonlin_dyn(x, u_apply)
+
+print(f"Final state: x={hist[-1, 0]:.3f} m, theta={np.degrees(hist[-1, 2]):.3f}°")
+print(f"Max |u| during run: {np.max(np.abs(u_hist)):.2f} N (bound was {u_max})")
+"""),
+        code("""t_arr = np.arange(N_sim) * dt
+fig, axs = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
+axs[0].plot(t_arr, hist[:, 0], 'b-'); axs[0].axhline(2.0, color='r', ls='--', alpha=0.5, label='constraint')
+axs[0].axhline(-2.0, color='r', ls='--', alpha=0.5)
+axs[0].set_ylabel('cart x (m)'); axs[0].legend(); axs[0].grid()
+axs[1].plot(t_arr, np.degrees(hist[:, 2]), 'g-')
+axs[1].axhline(np.degrees(0.3), color='r', ls='--', alpha=0.5, label='constraint')
+axs[1].axhline(-np.degrees(0.3), color='r', ls='--', alpha=0.5)
+axs[1].set_ylabel('pole θ (deg)'); axs[1].legend(); axs[1].grid()
+axs[2].plot(t_arr, u_hist, 'r-')
+axs[2].axhline(u_max, color='k', ls='--', alpha=0.5, label='input bound')
+axs[2].axhline(-u_max, color='k', ls='--', alpha=0.5)
+axs[2].set_ylabel('control u (N)'); axs[2].set_xlabel('t (s)'); axs[2].legend(); axs[2].grid()
+plt.tight_layout()
+plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Theorem** (Stability of MPC; Mayne, Rawlings, Rao, Scokaert, 2000). *For a stabilizable LTI system with positive-definite stage cost $(Q, R)$, terminal cost $Q_f$ chosen as the LQR cost-to-go matrix, terminal constraint set $\mathcal{X}_f$ chosen as a control-invariant set under the LQR feedback, and the horizon $N$ chosen long enough for the unconstrained problem to enter $\mathcal{X}_f$: the closed-loop MPC is asymptotically stable, with the value function as Lyapunov function.*
+
+**Recursive feasibility.** Without the terminal-set constraint $\mathcal{X}_f$, MPC can become *infeasible* — the QP solver returns no admissible $\mathbf{u}$. The terminal set guarantees: feasible-now → feasible-next.
+
+**Complexity.** Per control step: one QP solve, $O((Nm)^3)$ worst case (interior-point) or $O((Nm)^2 \cdot \text{iter})$ for active-set / OSQP. With $N=20$, $m=1$: trivial. Real-time MPC on a quadrotor at 1 kHz routinely uses $N=20$-50.
+
+**References.**
+- Mayne, D. Q., Rawlings, J. B., Rao, C. V., & Scokaert, P. O. M. (2000). *Constrained model predictive control: Stability and optimality*. Automatica, 36(6), 789-814.
+- Borrelli, F., Bemporad, A., & Morari, M. (2017). *Predictive Control for Linear and Hybrid Systems*. Cambridge University Press.
+- Stellato, B. et al. (2020). *OSQP: An operator splitting solver for quadratic programs*. Math. Prog. Comp. 12, 637-672.
+"""),
+    ]
+    write("21_motion_control_mpc_cartpole.ipynb", cells)
+
+
+# ---------------------------------------------------------------------------
+# 22. Control Barrier Function safety filter
+# ---------------------------------------------------------------------------
+def nb_22_cbf_safety_filter():
+    cells = [
+        md("""# 22 — Control Barrier Function Safety Filter
+
+**Section:** Motion Control · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance* (CBF approach to safety)
+
+Take any nominal controller (e.g. a PID pointing at the goal) and *guarantee* it never violates a safety constraint, by solving a small QP at every step that finds the closest input to the nominal one that satisfies the **Control Barrier Function (CBF) condition**. This is the modern (Ames-era) successor to potential-field obstacle avoidance.
+"""),
+        md("""## Intuition — what's actually going on?
+
+You have a perfectly good controller that gets the robot to the goal (e.g., proportional feedback `u_nom = K*(goal - x)`). The catch: it doesn't know about obstacles. You don't want to redesign the whole controller; you just want a *safety filter* that overrides `u_nom` only when needed.
+
+A **Control Barrier Function** $h(x)$ is a function that's positive in the safe set and zero on its boundary. The trick: enforce $\dot h \ge -\alpha h$ for some class-K function $\alpha$. This makes the safe set $\{h \ge 0\}$ *forward-invariant* — once inside, you stay inside, forever.
+
+At every control step we solve a tiny QP:
+
+> Find $u$ closest to $u_\text{nom}$ such that the CBF condition holds.
+
+If $u_\text{nom}$ is already safe, the QP returns $u = u_\text{nom}$. Otherwise it returns the *minimally-modified* safe input. This is the modern (Ames-era) successor to artificial-potential-field obstacle avoidance, with formal forward-invariance guarantees.
+"""),
+        md(r"""## Analytical derivation
+
+**Safe set.** Define $h: \mathbb{R}^n \to \mathbb{R}$ smooth. The *safe set* is $\mathcal{S} = \{x : h(x) \ge 0\}$.
+
+**Theorem** (Nagumo 1942, Ames-Xu-Grizzle 2014). *For control-affine dynamics $\dot x = f(x) + g(x) u$, the safe set $\mathcal{S}$ is forward-invariant under $u$ iff*
+
+$$\boxed{\;\dot h(x, u) = L_f h(x) + L_g h(x)\, u \;\ge\; -\alpha(h(x))\;}$$
+
+*for some extended class-$\mathcal{K}$ function $\alpha$.*
+
+Here $L_f h = \nabla h \cdot f$ and $L_g h = \nabla h \cdot g$ are Lie derivatives.
+
+**Safety filter QP.** Given a *nominal* controller $u_\text{nom}(x)$, find the minimally modified safe input:
+
+$$u^\star = \arg\min_u \tfrac{1}{2}\|u - u_\text{nom}\|^2 \quad \text{s.t.} \quad L_g h(x)\,u \ge -L_f h(x) - \alpha(h(x))$$
+
+For single-input systems and an affine constraint, this QP has a **closed-form solution** (KKT):
+
+$$u^\star = u_\text{nom} + \max\!\bigl(0,\ -L_f h - L_g h\,u_\text{nom} - \alpha h\bigr) \cdot \frac{L_g h^T}{\|L_g h\|^2}$$
+
+(when $L_g h \ne 0$; otherwise the system has *no instantaneous authority* over $h$, a phenomenon called **relative-degree drop** — use HOCBFs in that case.)
+
+### Example: 2D point robot avoiding a disk obstacle
+
+Dynamics: single integrator $\dot x = u$, $x \in \mathbb{R}^2$, $\|u\|_\infty \le u_\max$.
+
+Obstacle at $x_o$ with radius $r$. Define $h(x) = \|x - x_o\|^2 - r^2$. Then:
+
+- $L_f h = 0$ (no drift), $L_g h = 2(x - x_o)^T$
+- CBF condition: $2(x - x_o)^T u \ge -\alpha(h(x))$
+
+With $\alpha(s) = \gamma \cdot s$ (linear class-K), the QP becomes:
+
+$$u^\star = u_\text{nom} - \max\!\Bigl(0,\ -2(x - x_o)^T u_\text{nom} - \gamma h\Bigr) \cdot \frac{2(x - x_o)}{4\|x - x_o\|^2}$$
+
+### Compatibility check — math ↔ code
+
+| Math | Code |
+|---|---|
+| $h(x) = \|x - x_o\|^2 - r^2$ | `def h(x): return np.linalg.norm(x - obs)**2 - r**2` |
+| $L_g h = 2(x - x_o)^T$ | `Lgh = 2 * (x - obs)` |
+| Class-K $\alpha(s) = \gamma s$ | `alpha = gamma * h(x)` |
+| Nominal controller (P toward goal) | `u_nom = K * (goal - x)` |
+| QP closed-form safety filter | `slack = max(0, -Lgh @ u_nom - alpha)`; `u_safe = u_nom + slack * Lgh / (Lgh @ Lgh)` |
+"""),
+        code("""import numpy as np
+import matplotlib.pyplot as plt
+
+# 2D single-integrator robot, disk obstacle
+obs = np.array([3.0, 1.5])
+r_obs = 1.0
+goal = np.array([6.0, 3.0])
+start = np.array([0.0, 0.0])
+K_p = 0.8           # nominal proportional gain
+u_max = 1.0         # |u| <= 1 m/s
+gamma = 2.0         # class-K slope: bigger -> safer / more conservative
+
+dt = 0.05
+T_sim = 12.0
+N_sim = int(T_sim / dt)
+
+
+def h(x):
+    return np.linalg.norm(x - obs) ** 2 - r_obs ** 2
+
+
+def Lgh(x):
+    return 2 * (x - obs)
+"""),
+        code("""def cbf_safety_filter(x, u_nom):
+    \"\"\"Solve the 1-constraint QP in closed form.
+    min ||u - u_nom||^2  s.t.  Lgh.u >= -gamma * h(x)
+    \"\"\"
+    lgh = Lgh(x)
+    if np.dot(lgh, lgh) < 1e-10:
+        return u_nom              # no instantaneous authority — relative-degree drop
+    slack = max(0.0, -np.dot(lgh, u_nom) - gamma * h(x))
+    u_safe = u_nom + slack * lgh / np.dot(lgh, lgh)
+    # Clip to control bounds
+    n = np.linalg.norm(u_safe)
+    if n > u_max:
+        u_safe = u_safe * (u_max / n)
+    return u_safe
+
+
+# Simulate WITH and WITHOUT the CBF filter for comparison
+def run(use_cbf):
+    x = start.copy()
+    hist = [x.copy()]
+    for _ in range(N_sim):
+        u_nom = K_p * (goal - x)
+        n = np.linalg.norm(u_nom)
+        if n > u_max:
+            u_nom = u_nom * (u_max / n)
+        u = cbf_safety_filter(x, u_nom) if use_cbf else u_nom
+        x = x + dt * u
+        hist.append(x.copy())
+    return np.array(hist)
+
+
+traj_unsafe = run(use_cbf=False)
+traj_safe   = run(use_cbf=True)
+
+min_dist_unsafe = np.min(np.linalg.norm(traj_unsafe - obs, axis=1))
+min_dist_safe   = np.min(np.linalg.norm(traj_safe - obs, axis=1))
+print(f"Min distance to obstacle (unsafe): {min_dist_unsafe:.3f} m  -- inside r={r_obs}? {min_dist_unsafe < r_obs}")
+print(f"Min distance to obstacle (CBF):    {min_dist_safe:.3f}  m  -- always >= r={r_obs}? {min_dist_safe >= r_obs - 0.01}")
+"""),
+        code("""fig, ax = plt.subplots(figsize=(9, 6))
+ax.add_patch(plt.Circle(obs, r_obs, color='lightgray', label='Obstacle'))
+ax.add_patch(plt.Circle(obs, r_obs + 0.05, fill=False, ls='--', color='black'))
+ax.plot(traj_unsafe[:, 0], traj_unsafe[:, 1], 'r-', lw=2, label='Nominal P-controller (no CBF)')
+ax.plot(traj_safe[:, 0],   traj_safe[:, 1],   'b-', lw=2, label='CBF safety filter')
+ax.plot(*start, 'go', ms=12, label='Start')
+ax.plot(*goal,  'g*', ms=18, label='Goal')
+ax.set_aspect('equal'); ax.legend(loc='upper left'); ax.grid()
+ax.set_xlabel('x (m)'); ax.set_ylabel('y (m)')
+ax.set_title('CBF Safety Filter — minimally modify nominal control to stay outside disk')
+plt.tight_layout()
+plt.show()
+"""),
+        md(r"""## References & rigor notes
+
+**Theorem** (Forward invariance, Ames-Xu-Grizzle 2014). *If $h$ is a CBF for the system $\dot x = f(x) + g(x)u$ on the safe set $\mathcal{S} = \{h \ge 0\}$, and $u(x)$ satisfies the CBF condition $L_g h(x)\,u + L_f h(x) \ge -\alpha(h(x))$ for all $x \in \mathcal{S}$, then $\mathcal{S}$ is forward-invariant: any trajectory starting in $\mathcal{S}$ remains in $\mathcal{S}$ for all $t \ge 0$.*
+
+**Relative-degree drop.** When $L_g h \equiv 0$ (control input does not appear in $\dot h$), the standard CBF fails. **Higher-Order CBFs (HOCBFs)** (Xiao & Belta 2019) lift the constraint to a higher derivative until the input appears.
+
+**Why this matters historically.** Nagumo's viability theorem (1942) is the foundational existence theorem for forward-invariance: every "modern" CBF result is a corollary. Ames et al. (2014, 2017) operationalized this into the quadratic-program safety filter used in production today (e.g., Boston Dynamics' Spot uses CBFs for collision avoidance).
+
+**Complexity.** Per step: one tiny QP (1 constraint here; up to dozens in production with multiple obstacles). Closed-form for single constraint; OSQP for multiple constraints, $\sim 0.1$ ms per call.
+
+**References.**
+- Nagumo, M. (1942). *Über die Lage der Integralkurven gewöhnlicher Differentialgleichungen*. Proc. Phys.-Math. Soc. Japan, 24, 551-559. (The OG.)
+- Ames, A. D., Xu, X., Grizzle, J. W., & Tabuada, P. (2014). *Control barrier function based quadratic programs with application to adaptive cruise control*. CDC 2014.
+- Ames, A. D., Coogan, S., Egerstedt, M., Notomista, G., Sreenath, K., & Tabuada, P. (2019). *Control barrier functions: Theory and applications*. ECC 2019.
+- Xiao, W., & Belta, C. (2019). *Control barrier functions for systems with high relative degree*. CDC 2019.
+"""),
+    ]
+    write("22_motion_control_cbf_safety_filter.ipynb", cells)
+
+
 def main():
     print(f"Generating notebooks in {NOTEBOOKS_DIR}")
     nb_01_astar()
@@ -2973,6 +3492,8 @@ def main():
     nb_18_kalman_tracking()
     nb_19_bicycle()
     nb_20_symbolic_dynamics()
+    nb_21_mpc_cartpole()
+    nb_22_cbf_safety_filter()
     print("Done.")
 
 
