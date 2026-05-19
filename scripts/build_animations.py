@@ -506,6 +506,410 @@ def anim_icp():
     save(anim, "icp_alignment", fps=4)
 
 
+# ----- 9. CBF safety filter — point robot dodging disk -----
+def anim_cbf():
+    obs = np.array([3.0, 1.5]); r_obs = 1.0
+    goal = np.array([6.0, 3.0]); start = np.array([0.0, 0.0])
+    K_p, u_max, gamma, dt = 0.8, 1.0, 2.0, 0.05
+    N_sim = int(12 / dt)
+
+    def run(use_cbf):
+        x = start.copy()
+        hist = [x.copy()]
+        for _ in range(N_sim):
+            u_nom = K_p * (goal - x)
+            n = np.linalg.norm(u_nom)
+            if n > u_max:
+                u_nom = u_nom * (u_max / n)
+            if use_cbf:
+                lgh = 2 * (x - obs)
+                h = np.linalg.norm(x - obs) ** 2 - r_obs ** 2
+                slack = max(0.0, -lgh @ u_nom - gamma * h)
+                if lgh @ lgh > 1e-10:
+                    u_nom = u_nom + slack * lgh / (lgh @ lgh)
+                n = np.linalg.norm(u_nom)
+                if n > u_max:
+                    u_nom = u_nom * (u_max / n)
+            x = x + dt * u_nom
+            hist.append(x.copy())
+        return np.array(hist)
+
+    traj_u = run(False)
+    traj_s = run(True)
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.add_patch(plt.Circle(obs, r_obs, color="lightgray"))
+    ax.plot(*start, "go", ms=12)
+    ax.plot(*goal, "g*", ms=18)
+    ax.set_xlim(-1, 7); ax.set_ylim(-1, 4.5); ax.set_aspect("equal")
+    ax.set_title("CBF Safety Filter: Nominal (red) vs Filtered (blue)")
+    line_u, = ax.plot([], [], "r-", lw=2, label="Nominal P-controller")
+    line_s, = ax.plot([], [], "b-", lw=2, label="CBF safety filter")
+    dot_u, = ax.plot([], [], "ro", ms=8)
+    dot_s, = ax.plot([], [], "bo", ms=8)
+    ax.legend(loc="upper left")
+    ax.set_xticks([]); ax.set_yticks([])
+
+    sub = 2
+    n_frames = len(traj_u) // sub
+
+    def update(frame):
+        k = min(frame * sub, len(traj_u) - 1)
+        line_u.set_data(traj_u[:k + 1, 0], traj_u[:k + 1, 1])
+        line_s.set_data(traj_s[:k + 1, 0], traj_s[:k + 1, 1])
+        dot_u.set_data([traj_u[k, 0]], [traj_u[k, 1]])
+        dot_s.set_data([traj_s[k, 0]], [traj_s[k, 1]])
+        return [line_u, line_s, dot_u, dot_s]
+
+    anim = FuncAnimation(fig, update, frames=n_frames, interval=50, blit=False)
+    save(anim, "cbf_safety_filter", fps=20)
+
+
+# ----- 10. MPC cart-pole -----
+def anim_mpc_cartpole():
+    """LQR-flavoured MPC visualization. We reuse LQR as a proxy for the
+    constrained MPC because the qualitative behaviour (settle from a
+    perturbation under constraint-respecting input) is essentially the
+    same near the linearization."""
+    M, m, l, g = 1.0, 0.1, 0.5, 9.81
+    A = np.array([[0, 1, 0, 0],
+                  [0, 0, -m * g / M, 0],
+                  [0, 0, 0, 1],
+                  [0, 0, (M + m) * g / (M * l), 0]])
+    B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
+    Q = np.diag([1, 0.1, 10, 1]); R = np.array([[0.1]])
+    P = solve_continuous_are(A, B, Q, R)
+    K = np.linalg.inv(R) @ B.T @ P
+
+    def dyn(x, u):
+        pos, v, th, om = x
+        s, c = np.sin(th), np.cos(th)
+        den = M + m * s ** 2
+        acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
+        a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
+        return np.array([v, acc, om, a_th])
+
+    x = np.array([0.0, 0.0, 0.15, 0.0])  # 9 deg initial
+    dt = 0.005; N = 800
+    u_max = 5.0
+    xs = np.zeros((N, 4)); us = np.zeros(N)
+    for i in range(N):
+        u = float(-(K @ x).item())
+        u = np.clip(u, -u_max, u_max)              # input constraint (MPC's job)
+        xs[i] = x; us[i] = u
+        x = x + dt * dyn(x, u)
+
+    sub = 5
+    fig = plt.figure(figsize=(10, 5))
+    gs = fig.add_gridspec(2, 1, height_ratios=[3, 1])
+    ax = fig.add_subplot(gs[0])
+    ax2 = fig.add_subplot(gs[1])
+    ax.set_xlim(-1.5, 1.5); ax.set_ylim(-0.4, 1.0); ax.set_aspect("equal")
+    ax.axhline(0, color="k", lw=1)
+    cart = plt.Rectangle((-0.15, -0.075), 0.3, 0.15, color="steelblue")
+    ax.add_patch(cart)
+    rod, = ax.plot([], [], "k-", lw=3)
+    bob, = ax.plot([], [], "ro", ms=12)
+    ax.set_title("MPC Cart-Pole — input constrained to ±5 N")
+    ax.set_xticks([]); ax.set_yticks([])
+
+    ax2.axhline(u_max, color="r", ls="--", alpha=0.5)
+    ax2.axhline(-u_max, color="r", ls="--", alpha=0.5)
+    ax2.set_ylim(-u_max * 1.3, u_max * 1.3)
+    ax2.set_xlim(0, N * dt)
+    u_line, = ax2.plot([], [], "r-")
+    ax2.set_ylabel("u (N)"); ax2.set_xlabel("t (s)"); ax2.grid()
+
+    def update(frame):
+        i = min(frame * sub, N - 1)
+        pos = xs[i, 0]; th = xs[i, 2]
+        cart.set_xy((pos - 0.15, -0.075))
+        bx, by = pos + l * np.sin(th), l * np.cos(th)
+        rod.set_data([pos, bx], [0, by])
+        bob.set_data([bx], [by])
+        t_arr = np.arange(i + 1) * dt
+        u_line.set_data(t_arr, us[:i + 1])
+        return [cart, rod, bob, u_line]
+
+    anim = FuncAnimation(fig, update, frames=N // sub, interval=40, blit=False)
+    save(anim, "mpc_cartpole", fps=20)
+
+
+# ----- 11. EKF-SLAM with covariance ellipses -----
+def anim_ekf_slam():
+    np.random.seed(1)
+    T = 200; dt = 0.1
+    v, omega = 1.0, 0.1
+    true_robot = np.zeros((T, 3))
+    for k in range(1, T):
+        th = true_robot[k - 1, 2]
+        true_robot[k] = true_robot[k - 1] + dt * np.array([v * np.cos(th), v * np.sin(th), omega])
+    true_lm = np.array([[5, 5], [-5, 5], [0, -8], [7, -2]])
+    N_LM = len(true_lm); n = 3 + 2 * N_LM
+
+    mu = np.zeros(n)
+    Sigma = np.eye(n) * 1e6; Sigma[:3, :3] = np.eye(3) * 0.01
+    Q = np.diag([0.05, 0.05, 0.01]) ** 2
+    R_obs = np.diag([0.2, 0.05]) ** 2
+    seen = [False] * N_LM
+    mu_snaps = [mu.copy()]; Sigma_snaps = [Sigma.copy()]
+
+    def wrap(a):
+        return (a + np.pi) % (2 * np.pi) - np.pi
+
+    for k in range(1, T):
+        u = [v + np.random.randn() * 0.05, omega + np.random.randn() * 0.01]
+        th = mu[2]
+        mu[:3] = mu[:3] + dt * np.array([u[0] * np.cos(th), u[0] * np.sin(th), u[1]])
+        G = np.eye(n)
+        G[0, 2] = -dt * u[0] * np.sin(th); G[1, 2] = dt * u[0] * np.cos(th)
+        F = np.zeros((3, n)); F[:3, :3] = np.eye(3)
+        Sigma = G @ Sigma @ G.T + F.T @ Q @ F
+        for i, lm in enumerate(true_lm):
+            z = np.array([np.linalg.norm(lm - true_robot[k, :2]),
+                          np.arctan2(lm[1] - true_robot[k, 1], lm[0] - true_robot[k, 0]) - true_robot[k, 2]]) \
+                + np.random.multivariate_normal([0, 0], R_obs)
+            if not seen[i]:
+                mu[3 + 2 * i] = mu[0] + z[0] * np.cos(z[1] + mu[2])
+                mu[3 + 2 * i + 1] = mu[1] + z[0] * np.sin(z[1] + mu[2])
+                seen[i] = True
+            dx = mu[3 + 2 * i] - mu[0]; dy = mu[3 + 2 * i + 1] - mu[1]
+            q = dx * dx + dy * dy; r = np.sqrt(q)
+            z_hat = np.array([r, wrap(np.arctan2(dy, dx) - mu[2])])
+            innov = z - z_hat; innov[1] = wrap(innov[1])
+            H = np.zeros((2, n))
+            H[0, 0] = -dx / r;  H[0, 1] = -dy / r
+            H[1, 0] =  dy / q;  H[1, 1] = -dx / q;  H[1, 2] = -1
+            H[0, 3 + 2 * i] =  dx / r;  H[0, 3 + 2 * i + 1] =  dy / r
+            H[1, 3 + 2 * i] = -dy / q;  H[1, 3 + 2 * i + 1] =  dx / q
+            S = H @ Sigma @ H.T + R_obs
+            K_g = Sigma @ H.T @ np.linalg.inv(S)
+            mu = mu + K_g @ innov
+            Sigma = (np.eye(n) - K_g @ H) @ Sigma
+        mu_snaps.append(mu.copy()); Sigma_snaps.append(Sigma.copy())
+
+    def ellipse_pts(center, cov2, scale=2.0, n=40):
+        """2-sigma ellipse for visualization."""
+        vals, vecs = np.linalg.eigh(cov2)
+        vals = np.maximum(vals, 1e-8)
+        ang = np.linspace(0, 2 * np.pi, n)
+        circle = np.stack([np.cos(ang), np.sin(ang)])
+        ell = vecs @ np.diag(np.sqrt(vals) * scale) @ circle
+        return ell[0] + center[0], ell[1] + center[1]
+
+    sub = 4
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.scatter(true_lm[:, 0], true_lm[:, 1], c="g", marker="*", s=200, zorder=5)
+    ax.plot(true_robot[:, 0], true_robot[:, 1], "b-", lw=1, alpha=0.3)
+    truth_line, = ax.plot([], [], "b-", lw=2, label="true robot")
+    est_line, = ax.plot([], [], "r--", lw=1.5, label="SLAM estimate")
+    lm_dots = [ax.plot([], [], "rx", ms=14)[0] for _ in range(N_LM)]
+    lm_ellipses = [ax.plot([], [], "r-", lw=0.8, alpha=0.6)[0] for _ in range(N_LM)]
+    ax.set_xlim(-10, 12); ax.set_ylim(-12, 10); ax.set_aspect("equal")
+    ax.set_title("EKF SLAM — landmark uncertainty ellipses shrink as robot moves")
+    ax.legend(loc="upper right")
+    ax.set_xticks([]); ax.set_yticks([])
+
+    def update(frame):
+        t = min(frame * sub, len(mu_snaps) - 1)
+        truth_line.set_data(true_robot[:t + 1, 0], true_robot[:t + 1, 1])
+        traj_est = np.array([m[:2] for m in mu_snaps[:t + 1]])
+        est_line.set_data(traj_est[:, 0], traj_est[:, 1])
+        mu_t = mu_snaps[t]; S_t = Sigma_snaps[t]
+        for i in range(N_LM):
+            lm_x, lm_y = mu_t[3 + 2 * i], mu_t[3 + 2 * i + 1]
+            cov = S_t[3 + 2 * i:3 + 2 * i + 2, 3 + 2 * i:3 + 2 * i + 2]
+            if cov[0, 0] < 1e5:  # only show seen landmarks
+                lm_dots[i].set_data([lm_x], [lm_y])
+                ex, ey = ellipse_pts(np.array([lm_x, lm_y]), cov)
+                lm_ellipses[i].set_data(ex, ey)
+        return [truth_line, est_line] + lm_dots + lm_ellipses
+
+    anim = FuncAnimation(fig, update, frames=T // sub, interval=60, blit=False)
+    save(anim, "ekf_slam", fps=15)
+
+
+# ----- 12. Dynamic vs kinematic bicycle slalom -----
+def anim_bicycle_compare():
+    L = 2.5; dt = 0.05; N = 600
+    v = 25.0
+    slalom = lambda t: 0.1 * np.sin(0.6 * t)
+
+    # Kinematic
+    s_k = np.zeros(3); kin = np.zeros((N, 3))
+    for i in range(N):
+        delta = slalom(i * dt)
+        s_k[0] += v * np.cos(s_k[2]) * dt
+        s_k[1] += v * np.sin(s_k[2]) * dt
+        s_k[2] += v * np.tan(delta) / L * dt
+        kin[i] = s_k
+
+    # Dynamic
+    m_v, Iz = 1500.0, 3000.0; lf, lr = 1.2, 1.3; Cf = Cr = 80000.0
+    s_d = np.array([0.0, 0.0, 0.0, v, 0.0, 0.0])
+    dyn = np.zeros((N, 6))
+    for i in range(N):
+        delta = slalom(i * dt)
+        x_, y_, th, vx, vy, r = s_d
+        af = delta - np.arctan2(vy + lf * r, vx)
+        ar =       - np.arctan2(vy - lr * r, vx)
+        Fyf = Cf * af; Fyr = Cr * ar
+        vy_dot = (Fyf * np.cos(delta) + Fyr) / m_v - vx * r
+        r_dot  = (lf * Fyf * np.cos(delta) - lr * Fyr) / Iz
+        s_d[0] += (vx * np.cos(th) - vy * np.sin(th)) * dt
+        s_d[1] += (vx * np.sin(th) + vy * np.cos(th)) * dt
+        s_d[2] += r * dt
+        s_d[4] += vy_dot * dt
+        s_d[5] += r_dot * dt
+        dyn[i] = s_d
+
+    sub = 4
+    fig, ax = plt.subplots(figsize=(10, 5))
+    kin_line, = ax.plot([], [], "b-", lw=2, label="Kinematic (no slip)")
+    dyn_line, = ax.plot([], [], "r-", lw=2, label="Dynamic (tire slip)")
+    kin_dot, = ax.plot([], [], "bo", ms=8)
+    dyn_dot, = ax.plot([], [], "ro", ms=8)
+    ax.set_xlim(0, max(kin[-1, 0], dyn[-1, 0]) * 1.05)
+    ax.set_ylim(min(kin[:, 1].min(), dyn[:, 1].min()) - 1,
+                max(kin[:, 1].max(), dyn[:, 1].max()) + 1)
+    ax.legend(loc="upper right"); ax.grid()
+    ax.set_xlabel("x (m)"); ax.set_ylabel("y (m)")
+    ax.set_title(f"Slalom at v = {v} m/s — kinematic vs dynamic bicycle")
+
+    def update(frame):
+        i = min(frame * sub, N - 1)
+        kin_line.set_data(kin[:i + 1, 0], kin[:i + 1, 1])
+        dyn_line.set_data(dyn[:i + 1, 0], dyn[:i + 1, 1])
+        kin_dot.set_data([kin[i, 0]], [kin[i, 1]])
+        dyn_dot.set_data([dyn[i, 0]], [dyn[i, 1]])
+        return [kin_line, dyn_line, kin_dot, dyn_dot]
+
+    anim = FuncAnimation(fig, update, frames=N // sub, interval=50, blit=False)
+    save(anim, "bicycle_compare", fps=20)
+
+
+# ----- 13. Occupancy grid building scan-by-scan -----
+def anim_occupancy():
+    np.random.seed(0)
+    world = 20.0
+    true_obs = [(5, 5, 8, 7), (12, 12, 14, 16), (15, 4, 18, 7), (3, 14, 5, 17)]
+
+    def hit_rect(x, y):
+        for (x0, y0, x1, y1) in true_obs:
+            if x0 <= x <= x1 and y0 <= y <= y1:
+                return True
+        return False
+
+    def lidar(pose, n_beams=120, max_range=12.0, step=0.1):
+        angles = np.linspace(-np.pi, np.pi, n_beams, endpoint=False)
+        ranges = np.full(n_beams, max_range)
+        for i, a in enumerate(angles):
+            for r in np.arange(step, max_range, step):
+                x = pose[0] + r * np.cos(pose[2] + a)
+                y = pose[1] + r * np.sin(pose[2] + a)
+                if hit_rect(x, y):
+                    ranges[i] = r
+                    break
+        return angles, ranges
+
+    res = 0.2
+    nn = int(world / res)
+    log_odds = np.zeros((nn, nn))
+    l_occ, l_free = 0.7, -0.4
+    poses = [(3, 10, 0), (10, 3, np.pi / 2), (10, 17, -np.pi / 2),
+             (17, 10, np.pi), (10, 10, 0)]
+
+    snaps = []
+    for pose in poses:
+        angles, ranges = lidar(pose)
+        for a, r in zip(angles, ranges):
+            for d in np.arange(0.2, r, res):
+                x = pose[0] + d * np.cos(pose[2] + a)
+                y = pose[1] + d * np.sin(pose[2] + a)
+                if 0 <= x < world and 0 <= y < world:
+                    log_odds[int(y / res), int(x / res)] += l_free
+            if r < 12.0:
+                x = pose[0] + r * np.cos(pose[2] + a)
+                y = pose[1] + r * np.sin(pose[2] + a)
+                if 0 <= x < world and 0 <= y < world:
+                    log_odds[int(y / res), int(x / res)] += l_occ
+        snaps.append((1 / (1 + np.exp(-log_odds.copy())), pose))
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    im = ax.imshow(snaps[0][0], origin="lower", cmap="Greys",
+                   extent=[0, world, 0, world], vmin=0, vmax=1)
+    star, = ax.plot([], [], "r*", ms=20)
+    title = ax.set_title("Occupancy grid: scan 1 / 5")
+    # Tiny per-frame counter forces frame uniqueness so PillowWriter
+    # doesn't dedupe — otherwise each held scan collapses to one frame.
+    counter = ax.text(0.01, 0.99, "", transform=ax.transAxes,
+                     fontsize=6, color="gray", va="top")
+    ax.set_xticks([]); ax.set_yticks([])
+
+    hold = 12
+    total = len(snaps) * hold
+
+    def update(frame):
+        k = min(frame // hold, len(snaps) - 1)
+        prob, pose = snaps[k]
+        im.set_data(prob)
+        star.set_data([pose[0]], [pose[1]])
+        title.set_text(f"Occupancy grid: scan {k + 1} / {len(snaps)}")
+        counter.set_text(f"f{frame:03d}")
+        return [im, star, title, counter]
+
+    anim = FuncAnimation(fig, update, frames=total, interval=70, blit=False)
+    save(anim, "occupancy_grid_building", fps=14)
+
+
+# ----- 14. SymPy pendulum swinging -----
+def anim_sympy_pendulum():
+    L_p, g_p = 1.0, 9.81
+    dt = 0.01; N = 1000
+
+    def rhs(state):
+        th, om = state
+        return np.array([om, -(g_p / L_p) * np.sin(th)])
+
+    state = np.array([np.pi / 3, 0.0])
+    hist = np.zeros((N, 2))
+    for i in range(N):
+        hist[i] = state
+        k1 = rhs(state)
+        k2 = rhs(state + dt * k1 / 2)
+        k3 = rhs(state + dt * k2 / 2)
+        k4 = rhs(state + dt * k3)
+        state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+
+    sub = 5
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.set_xlim(-1.3, 1.3); ax.set_ylim(-1.3, 1.3); ax.set_aspect("equal")
+    ax.plot(0, 0, "ks", ms=10)             # pivot
+    rod, = ax.plot([], [], "k-", lw=2)
+    bob, = ax.plot([], [], "ro", ms=18)
+    trail, = ax.plot([], [], "r-", alpha=0.3, lw=1)
+    title = ax.set_title("SymPy Pendulum — Lagrangian derivation + RK4")
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.axis("off")
+
+    trail_x, trail_y = [], []
+
+    def update(frame):
+        i = min(frame * sub, N - 1)
+        th = hist[i, 0]
+        bx, by = L_p * np.sin(th), -L_p * np.cos(th)
+        rod.set_data([0, bx], [0, by])
+        bob.set_data([bx], [by])
+        trail_x.append(bx); trail_y.append(by)
+        if len(trail_x) > 50:
+            trail_x.pop(0); trail_y.pop(0)
+        trail.set_data(trail_x, trail_y)
+        return [rod, bob, trail, title]
+
+    anim = FuncAnimation(fig, update, frames=N // sub, interval=40, blit=False)
+    save(anim, "sympy_pendulum_swing", fps=25)
+
+
 def main():
     print(f"Generating animations in {MEDIA_DIR}")
     anim_astar()
@@ -516,6 +920,13 @@ def main():
     anim_quadrotor()
     anim_ik()
     anim_icp()
+    # New (council uprev): 6 more covering the new flagship + uprev'd content
+    anim_cbf()
+    anim_mpc_cartpole()
+    anim_ekf_slam()
+    anim_bicycle_compare()
+    anim_occupancy()
+    anim_sympy_pendulum()
     print("Done.")
 
 

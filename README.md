@@ -63,6 +63,42 @@ Animated GIFs from selected notebooks — click through to the full notebook wit
 <sub>Iterative Closest Point converges the source point cloud onto the target in ~10 iterations.</sub>
 </td>
 </tr>
+<tr>
+<td align="center">
+<a href="notebooks/22_motion_control_cbf_safety_filter.ipynb"><img src="media/cbf_safety_filter.gif" width="100%"/></a><br>
+<b><a href="notebooks/22_motion_control_cbf_safety_filter.ipynb">CBF Safety Filter</a></b><br>
+<sub>Nominal P-controller (red) collides; CBF safety filter (blue) holds the forward-invariance boundary exactly. Nagumo 1942 / Ames 2014.</sub>
+</td>
+<td align="center">
+<a href="notebooks/21_motion_control_mpc_cartpole.ipynb"><img src="media/mpc_cartpole.gif" width="100%"/></a><br>
+<b><a href="notebooks/21_motion_control_mpc_cartpole.ipynb">MPC Cart-Pole</a></b><br>
+<sub>Constrained MPC stabilizes cart-pole from 9° tilt with input saturated at ±5 N. Live control-input trace below.</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="notebooks/12_slam_ekf_slam.ipynb"><img src="media/ekf_slam.gif" width="100%"/></a><br>
+<b><a href="notebooks/12_slam_ekf_slam.ipynb">EKF SLAM</a></b><br>
+<sub>Robot trajectory + landmark uncertainty ellipses shrink as observations refine joint posterior. The covariance cross-correlations are SLAM's magic.</sub>
+</td>
+<td align="center">
+<a href="notebooks/19_ground_vehicles_bicycle.ipynb"><img src="media/bicycle_compare.gif" width="100%"/></a><br>
+<b><a href="notebooks/19_ground_vehicles_bicycle.ipynb">Bicycle: Kinematic vs Dynamic</a></b><br>
+<sub>Same slalom, 25 m/s. Tire slip causes measurable divergence — kinematic model breaks down at speed.</sub>
+</td>
+</tr>
+<tr>
+<td align="center">
+<a href="notebooks/10_mapping_occupancy_grid.ipynb"><img src="media/occupancy_grid_building.gif" width="100%"/></a><br>
+<b><a href="notebooks/10_mapping_occupancy_grid.ipynb">Occupancy Grid Building</a></b><br>
+<sub>Map fills in scan-by-scan from 5 lidar poses; log-odds accumulate cell-wise evidence.</sub>
+</td>
+<td align="center">
+<a href="notebooks/20_modeling_symbolic_pendulum.ipynb"><img src="media/sympy_pendulum_swing.gif" width="100%"/></a><br>
+<b><a href="notebooks/20_modeling_symbolic_pendulum.ipynb">SymPy Pendulum</a></b><br>
+<sub>Lagrangian-derived dynamics integrated with RK4 — energy drift 1e-8 over 10s.</sub>
+</td>
+</tr>
 </table>
 
 ## Interactive Demos (pygame)
