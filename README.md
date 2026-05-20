@@ -12,7 +12,7 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To track 1-for-1 
 
 Animated GIFs from selected notebooks — click through to the full notebook with math + code.
 
-> **⭐ Flagship notebooks**: **[05 Triple-Link LQR Pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb)** (sympy.physics.mechanics → CARE → Lyapunov sublevel-set ROA verification on nonlinear dynamics) and **[20 SymPy Lagrangian Pendulum](notebooks/20_modeling_symbolic_pendulum.ipynb)** (Lagrangian derivation + RK4 integration + empirical energy conservation 10⁻⁸ + elliptic-integral period validation 1.072× linear). These are the strongest "math first, code second" demonstrations in the repo.
+> **⭐ Flagship notebooks**: **[05 Cart-Pole Swing-Up + LQR Catch](notebooks/05_motion_control_pendulum_lqr.ipynb)** (hybrid Astrom-Furuta energy pumping → CARE-based LQR on nonlinear dynamics, full pendulum-energy-rate derivation), **[21 MPC Cart-Pole](notebooks/21_motion_control_mpc_cartpole.ipynb)** (constrained receding-horizon QP, Mayne 2000 stability framing), and **[20 SymPy Lagrangian Pendulum](notebooks/20_modeling_symbolic_pendulum.ipynb)** (Lagrangian derivation + RK4 integration + empirical energy conservation 10⁻⁸ + elliptic-integral period validation 1.072× linear). These are the strongest "math first, code second" demonstrations in the repo.
 
 <table>
 <tr>
@@ -35,8 +35,8 @@ Animated GIFs from selected notebooks — click through to the full notebook wit
 </td>
 <td align="center">
 <a href="notebooks/05_motion_control_pendulum_lqr.ipynb"><img src="media/lqr_pendulum.gif" width="100%"/></a><br>
-<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">LQR — Triple-Link Inverted Pendulum</a></b><br>
-<sub>Three links, one cart force. 8-D state. Sympy derives the nonlinear EOMs; LQR balances all three simultaneously.</sub>
+<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">Cart-Pole Swing-Up + LQR Catch</a></b><br>
+<sub>Bang-bang energy pumping (Astrom-Furuta) swings up from hanging in ~1.2 s, then LQR catches. Bob turns green when the LQR mode engages.</sub>
 </td>
 </tr>
 <tr>
@@ -46,45 +46,33 @@ Animated GIFs from selected notebooks — click through to the full notebook wit
 <sub>Geometric controller chases a look-ahead point on a sinusoidal reference path.</sub>
 </td>
 <td align="center">
-<a href="notebooks/08_uav_quadrotor_pid.ipynb"><img src="media/quadrotor_pid.gif" width="100%"/></a><br>
-<b><a href="notebooks/08_uav_quadrotor_pid.ipynb">Quadrotor PID</a></b><br>
-<sub>Cascaded altitude + attitude PID rejects roll-axis disturbances while tracking a moving altitude setpoint.</sub>
-</td>
-</tr>
-<tr>
-<td align="center">
 <a href="notebooks/07_manipulation_ik_2link.ipynb"><img src="media/ik_2link.gif" width="100%"/></a><br>
 <b><a href="notebooks/07_manipulation_ik_2link.ipynb">2-Link Inverse Kinematics</a></b><br>
 <sub>Analytical IK solves for joint angles as the end-effector traces a circle.</sub>
 </td>
+</tr>
+<tr>
 <td align="center">
 <a href="notebooks/11_slam_icp.ipynb"><img src="media/icp_alignment.gif" width="100%"/></a><br>
 <b><a href="notebooks/11_slam_icp.ipynb">ICP Scan Matching</a></b><br>
 <sub>Iterative Closest Point converges the source point cloud onto the target in ~10 iterations.</sub>
 </td>
-</tr>
-<tr>
 <td align="center">
 <a href="notebooks/22_motion_control_cbf_safety_filter.ipynb"><img src="media/cbf_safety_filter.gif" width="100%"/></a><br>
 <b><a href="notebooks/22_motion_control_cbf_safety_filter.ipynb">CBF Safety Filter</a></b><br>
 <sub>Nominal P-controller (red) collides; CBF safety filter (blue) holds the forward-invariance boundary exactly. Nagumo 1942 / Ames 2014.</sub>
 </td>
+</tr>
+<tr>
 <td align="center">
 <a href="notebooks/21_motion_control_mpc_cartpole.ipynb"><img src="media/mpc_cartpole.gif" width="100%"/></a><br>
 <b><a href="notebooks/21_motion_control_mpc_cartpole.ipynb">MPC Cart-Pole</a></b><br>
 <sub>Constrained MPC stabilizes cart-pole from 9° tilt with input saturated at ±5 N. Live control-input trace below.</sub>
 </td>
-</tr>
-<tr>
 <td align="center">
 <a href="notebooks/12_slam_ekf_slam.ipynb"><img src="media/ekf_slam.gif" width="100%"/></a><br>
 <b><a href="notebooks/12_slam_ekf_slam.ipynb">EKF SLAM</a></b><br>
 <sub>Robot trajectory + landmark uncertainty ellipses shrink as observations refine joint posterior. The covariance cross-correlations are SLAM's magic.</sub>
-</td>
-<td align="center">
-<a href="notebooks/19_ground_vehicles_bicycle.ipynb"><img src="media/bicycle_compare.gif" width="100%"/></a><br>
-<b><a href="notebooks/19_ground_vehicles_bicycle.ipynb">Bicycle: Kinematic vs Dynamic</a></b><br>
-<sub>Same slalom, 25 m/s. Tire slip causes measurable divergence — kinematic model breaks down at speed.</sub>
 </td>
 </tr>
 <tr>
@@ -108,7 +96,6 @@ Four standalone scripts you can drive in real time. See [`demos/`](demos/) for f
 ```bash
 pip install pygame
 python demos/drive_bicycle.py     # arrow keys: throttle + steer
-python demos/fly_quadrotor.py     # arrow keys: thrust + roll
 python demos/click_to_plan.py     # paint obstacles, A* replans live
 python demos/move_arm.py          # mouse controls end-effector via IK
 ```
@@ -128,10 +115,9 @@ jupyter notebook notebooks/
 | 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning |
 | 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | Localization |
 | 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | Localization |
-| 05 | [LQR triple-link inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
+| 05 | [Cart-pole swing-up + LQR catch](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
 | 06 | [Pure pursuit path tracking](notebooks/06_path_tracking_pure_pursuit.ipynb) | Path Tracking |
 | 07 | [2-link analytical IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation |
-| 08 | [Quadrotor PID](notebooks/08_uav_quadrotor_pid.ipynb) | UAV |
 | 09 | [Lane detection with OpenCV](notebooks/09_perception_lane_detection.ipynb) | Automated Driving |
 | 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | Mapping |
 | 11 | [ICP scan matching](notebooks/11_slam_icp.ipynb) | SLAM |

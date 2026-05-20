@@ -134,7 +134,7 @@ A 🏠 entry implies the row is also mapped — the notebook is in addition to (
 | 2 | Deep RL for Walking Robots | ✅ | legged_gym, Stable-Baselines3 |
 | 3 | MPC for Collision-Free Manipulation | ✅ | do-mpc, CasADi |
 | 4 | MPC for Holonomic Robot Navigation | ✅ | do-mpc |
-| 5 | Multi-Loop PI Tuning for Robotic Arm | 🏠 | **Notebook [05](notebooks/05_motion_control_pendulum_lqr.ipynb)** (LQR balancing cart-pole) + `TCLab`, `simple-pid`, `python-control` |
+| 5 | Multi-Loop PI Tuning for Robotic Arm | 🏠 | **Notebook [05](notebooks/05_motion_control_pendulum_lqr.ipynb)** (cart-pole swing-up + LQR catch) + `TCLab`, `simple-pid`, `python-control` |
 
 ## Unmanned Aerial Vehicles (UAV)
 
@@ -142,7 +142,7 @@ A 🏠 entry implies the row is also mapped — the notebook is in addition to (
 |---|---|---|---|
 | 1 | Simulation Library for Fixed-Wing and Multi-Rotor UAVs | ✅ | gym-pybullet-drones (multi-rotor), `JSBSim` (fixed-wing), AirSim |
 | 2 | Tune Waypoint Follower for Fixed-Wing UAV | ✅ | `JSBSim` + DroneKit-Python / MAVSDK-Python |
-| 3 | Approximate High-Fidelity UAV Models | 🏠 | **Notebook [08](notebooks/08_uav_quadrotor_pid.ipynb)** (planar quadrotor with altitude + roll PID) + `JSBSim` (high-fidelity 6-DoF) |
+| 3 | Approximate High-Fidelity UAV Models | ✅ | `JSBSim` (high-fidelity 6-DoF) + gym-pybullet-drones |
 | 4 | Load and Playback MAVLink TLOG | ✅ | pymavlink |
 | 5 | MAVLink Parameter Protocol | ✅ | pymavlink |
 | 6 | Support for Parrot Drones | ✅ | Olympe |
@@ -318,7 +318,7 @@ The following are **➖ N/A** (Simulink-specific concepts that don't translate t
 
 ## Appendix B: Our own implementations
 
-This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for the full collection — 20 runnable Jupyter notebooks with embedded plots.
+This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for the full collection — 21 runnable Jupyter notebooks with embedded plots.
 
 | # | Notebook | Section it covers in TRACKING above |
 |---|---|---|
@@ -326,10 +326,9 @@ This repo is transitioning from a pure curated link list to also hosting **first
 | 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning #3 |
 | 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | SLAM #5 |
 | 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | SLAM #5 |
-| 05 | [LQR inverted pendulum](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control #5 |
+| 05 | [Cart-pole swing-up + LQR catch](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control #5 |
 | 06 | [Pure pursuit](notebooks/06_path_tracking_pure_pursuit.ipynb) | Motion Planning #5 |
 | 07 | [Analytical 2-link IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation #2 |
-| 08 | [Quadrotor altitude + roll PID](notebooks/08_uav_quadrotor_pid.ipynb) | UAV #3 |
 | 09 | [Lane detection (Canny + Hough)](notebooks/09_perception_lane_detection.ipynb) | Auto Driving #1 |
 | 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | SLAM #4 |
 | 11 | [ICP scan matching](notebooks/11_slam_icp.ipynb) | SLAM #1 |

@@ -224,115 +224,96 @@ def anim_pf():
 
 # ----- 4. LQR triple-link inverted pendulum -----
 def anim_pendulum():
-    """Triple-link inverted pendulum balanced by LQR.
+    """Cart-pole swing-up + LQR catch.
 
-    Re-derives the dynamics symbolically with sympy.physics.mechanics
-    (takes ~10-30 s) then animates the nonlinear closed-loop simulation.
+    Starts pendulum hanging straight down, pumps mechanical energy via cart
+    motion alone (the only actuator) until the pendulum enters the LQR basin,
+    then catches with a CARE-based LQR. Matches notebook 05 exactly.
     """
-    import sympy as sp
-    import sympy.physics.mechanics as me
-    from scipy.integrate import solve_ivp
+    M, m, l, g = 1.0, 0.2, 0.5, 9.81
 
-    print("    (deriving triple-pendulum dynamics — this takes ~10-30 s)")
-    t_sym = me.dynamicsymbols._t
-    q  = me.dynamicsymbols('x th1 th2 th3')
-    qd = [qi.diff(t_sym) for qi in q]
-    u_sym = me.dynamicsymbols('u')
+    def nl_dyn(z, u):
+        pos, vel, th, om = z
+        s, c = np.sin(th), np.cos(th)
+        den = M + m * s ** 2
+        acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
+        a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
+        return np.array([vel, acc, om, a_th])
 
-    Mc_s, g_s = sp.symbols('Mc g', positive=True)
-    m_syms = sp.symbols('m1 m2 m3', positive=True)
-    L_syms = sp.symbols('L1 L2 L3', positive=True)
+    def E_pend(z):
+        pos, vel, th, om = z
+        bob_vx = vel + l * np.cos(th) * om
+        bob_vy = -l * np.sin(th) * om
+        return 0.5 * m * (bob_vx ** 2 + bob_vy ** 2) + m * g * l * np.cos(th)
 
-    Nf = me.ReferenceFrame('Nf')
-    O = me.Point('O'); O.set_vel(Nf, 0)
-    Pc = O.locatenew('Pc', q[0]*Nf.x)
-    Pc.set_vel(Nf, qd[0]*Nf.x)
-    cart = me.Particle('Cart', Pc, Mc_s)
+    E_star = m * g * l
 
-    bodies = [cart]
-    joint = Pc
-    for i in range(3):
-        A = Nf.orientnew(f'A{i+1}', 'Axis', [q[i+1], Nf.z])
-        A.set_ang_vel(Nf, qd[i+1]*Nf.z)
-        P_com = joint.locatenew(f'Pc{i+1}', (L_syms[i]/2)*A.y)
-        P_com.v2pt_theory(joint, Nf, A)
-        bodies.append(me.Particle(f'L{i+1}', P_com, m_syms[i]))
-        next_j = joint.locatenew(f'J{i+1}', L_syms[i]*A.y)
-        next_j.v2pt_theory(joint, Nf, A)
-        joint = next_j
+    A = np.array([[0, 1, 0, 0],
+                  [0, 0, -m * g / M, 0],
+                  [0, 0, 0, 1],
+                  [0, 0, (M + m) * g / (M * l), 0]])
+    B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
+    Q = np.diag([1.0, 1.0, 20.0, 1.0])
+    R_lqr = np.array([[0.1]])
+    P_riccati = solve_continuous_are(A, B, Q, R_lqr)
+    K_lqr = np.linalg.inv(R_lqr) @ B.T @ P_riccati
 
-    KE = sum(b.kinetic_energy(Nf) for b in bodies)
-    PE = sum(b.mass * g_s * b.point.pos_from(O).dot(Nf.y) for b in bodies)
-    L_lag = KE - PE
+    K_x, K_xd = 1.0, 0.5
+    u_max, theta_LQR, c_ROA = 15.0, 0.5, 20.0
 
-    LM = me.LagrangesMethod(L_lag, q, forcelist=[(Pc, u_sym*Nf.x)], frame=Nf)
-    LM.form_lagranges_equations()
+    def wrap(angle):
+        return (angle + np.pi) % (2 * np.pi) - np.pi
 
-    Lk = 0.3
-    params = {Mc_s: 1.0, g_s: 9.81,
-              m_syms[0]: 0.1, m_syms[1]: 0.1, m_syms[2]: 0.1,
-              L_syms[0]: Lk, L_syms[1]: Lk, L_syms[2]: Lk}
-    M_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.mass_matrix_full.subs(params), 'numpy')
-    F_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.forcing_full.subs(params), 'numpy')
+    def control(z):
+        th_w = wrap(z[2])
+        zl = np.array([z[0], z[1], th_w, z[3]])
+        if abs(th_w) < theta_LQR and (zl @ P_riccati @ zl) < c_ROA:
+            return float(np.clip(-(K_lqr @ zl).item(), -u_max, u_max)), "LQR"
+        Ep = E_pend(z)
+        sv = (Ep - E_star) * np.cos(z[2]) * z[3]
+        u_pump = +u_max * np.sign(sv) if abs(sv) > 1e-6 else 0.0
+        u_cart = -K_x * z[0] - K_xd * z[1]
+        return float(np.clip(u_pump + u_cart, -u_max, u_max)), "swing"
 
-    def nl_dyn(z, u_val):
-        args = list(z) + [u_val]
-        Mm = np.asarray(M_fn(*args), dtype=float)
-        Ff = np.asarray(F_fn(*args), dtype=float).flatten()
-        return np.linalg.solve(Mm, Ff)
+    dt = 0.002
+    T_sim = 6.0
+    N = int(T_sim / dt)
+    z = np.array([0.0, 0.0, np.pi, 0.1])
+    states = np.zeros((N, 4))
+    modes = []
+    for i in range(N):
+        u, mode = control(z)
+        states[i] = z
+        modes.append(mode)
+        z = z + dt * nl_dyn(z, u)
 
-    eps = 1e-6
-    Ax = np.zeros((8, 8)); Bx = np.zeros((8, 1))
-    z_eq = np.zeros(8)
-    for i in range(8):
-        zp = z_eq.copy(); zp[i] += eps
-        zm = z_eq.copy(); zm[i] -= eps
-        Ax[:, i] = (nl_dyn(zp, 0.0) - nl_dyn(zm, 0.0)) / (2 * eps)
-    Bx[:, 0] = (nl_dyn(z_eq, eps) - nl_dyn(z_eq, -eps)) / (2 * eps)
+    # Sub-sample to ~120 frames for a snappy GIF.
+    stride = max(1, N // 120)
+    states_a = states[::stride]
+    modes_a = modes[::stride]
 
-    Q = np.diag([1.0, 200.0, 200.0, 200.0, 1.0, 1.0, 1.0, 1.0])
-    R_lqr = np.array([[0.05]])
-    P_riccati = solve_continuous_are(Ax, Bx, Q, R_lqr)
-    K = np.linalg.inv(R_lqr) @ Bx.T @ P_riccati
-
-    def closed_loop(_, z):
-        return nl_dyn(z, float(-(K @ z).item()))
-
-    z0 = np.array([0.0, 0.04, -0.02, 0.03, 0, 0, 0, 0])
-    sol = solve_ivp(closed_loop, [0, 4.0], z0, dense_output=True,
-                    rtol=1e-7, atol=1e-9, max_step=0.005)
-    t_arr = np.linspace(0, 4.0, 200)
-    states = sol.sol(t_arr).T
-
-    def joints(state):
-        x = state[0]
-        th = state[1:4]
-        pts = [(x, 0.0)]
-        for i in range(3):
-            pts.append((pts[-1][0] + Lk * np.sin(th[i]),
-                        pts[-1][1] + Lk * np.cos(th[i])))
-        return np.array(pts)
-
-    fig, ax = plt.subplots(figsize=(7, 6))
-    ax.set_xlim(-0.9, 0.9); ax.set_ylim(-0.15, 1.1); ax.set_aspect("equal")
+    fig, ax = plt.subplots(figsize=(7, 5))
+    xmax = max(2.0, float(abs(states_a[:, 0]).max()) + 0.3)
+    ax.set_xlim(-xmax, xmax); ax.set_ylim(-0.8, 0.8); ax.set_aspect("equal")
     ax.axhline(0, color="brown", lw=2)
-    cart = plt.Rectangle((-0.15, -0.05), 0.3, 0.1, color="steelblue")
-    ax.add_patch(cart)
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c"]
-    link_lines = [ax.plot([], [], color=c, lw=4, marker="o", ms=6)[0] for c in colors]
-    ax.set_title("LQR — Triple-Link Inverted Pendulum")
+    cart_patch = plt.Rectangle((-0.15, -0.05), 0.3, 0.1, color="steelblue")
+    ax.add_patch(cart_patch)
+    (link_line,) = ax.plot([], [], "k-", lw=3)
+    (bob,) = ax.plot([], [], "ro", ms=14)
+    title = ax.set_title("Cart-Pole Swing-Up + LQR Catch")
     ax.set_xticks([]); ax.set_yticks([])
 
     def update(i):
-        s = states[i]
-        pts = joints(s)
-        cart.set_xy((s[0] - 0.15, -0.05))
-        for k in range(3):
-            link_lines[k].set_data([pts[k, 0], pts[k+1, 0]],
-                                    [pts[k, 1], pts[k+1, 1]])
-        return [cart] + link_lines
+        s = states_a[i]
+        bx, by = s[0] + l * np.sin(s[2]), l * np.cos(s[2])
+        cart_patch.set_xy((s[0] - 0.15, -0.05))
+        link_line.set_data([s[0], bx], [0, by])
+        bob.set_data([bx], [by])
+        bob.set_color("limegreen" if modes_a[i] == "LQR" else "red")
+        title.set_text(f"Cart-Pole Swing-Up + LQR Catch  |  mode: {modes_a[i]}")
+        return [cart_patch, link_line, bob, title]
 
-    anim = FuncAnimation(fig, update, frames=len(states), interval=50, blit=False)
+    anim = FuncAnimation(fig, update, frames=len(states_a), interval=50, blit=False)
     save(anim, "lqr_pendulum", fps=20)
 
 
@@ -378,54 +359,6 @@ def anim_pure_pursuit():
 
     anim = FuncAnimation(fig, update, frames=N // sub, interval=40, blit=False)
     save(anim, "pure_pursuit", fps=20)
-
-
-# ----- 6. Quadrotor PID with moving setpoint -----
-def anim_quadrotor():
-    np.random.seed(0)
-    g, m, I_inertia = 9.81, 0.5, 0.01
-    Kp_z, Kd_z = 8, 4.5
-    Kp_phi, Kd_phi = 18, 5.5
-    x = np.array([0.0, 0.0, 0.3, 0.0])
-    dt = 0.002                       # smaller dt — was 0.01, too coarse for stiff phi loop (Kp/I=1800)
-    N = 2500                         # 5 s of sim
-    hist = np.zeros((N, 4))
-    setpts = np.zeros(N)
-    for i in range(N):
-        z_set = 1.6 + 0.5 * np.sin(0.005 * i)
-        setpts[i] = z_set
-        z, zd, phi, pd = x
-        T = m * (g + Kp_z * (z_set - z) - Kd_z * zd)
-        tau = Kp_phi * (0 - phi) - Kd_phi * pd
-        if i in (600, 1400, 2100):        # periodic roll disturbance
-            x[3] += 0.8
-        x = x + dt * np.array([zd, T * np.cos(phi) / m - g, pd, tau / I_inertia])
-        hist[i] = x
-
-    sub = 20                                # 125 frames
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.set_xlim(-0.8, 0.8); ax.set_ylim(0, 3)
-    ax.axhline(0, color="brown", lw=2)
-    setpt_line, = ax.plot([], [], "r--", alpha=0.6, label="setpoint")
-    body, = ax.plot([], [], "k-", lw=4)
-    r_left, = ax.plot([], [], "bo", ms=10)
-    r_right, = ax.plot([], [], "bo", ms=10)
-    ax.set_title("Quadrotor PID — moving setpoint + roll kicks")
-    ax.set_xticks([]); ax.legend(loc="upper right")
-    L = 0.3
-
-    def update(frame):
-        idx = frame * sub
-        z, _, phi, _ = hist[idx]
-        dx = L * np.cos(phi); dy = L * np.sin(phi)
-        body.set_data([-dx, dx], [z - dy, z + dy])
-        r_left.set_data([-dx], [z - dy])
-        r_right.set_data([dx], [z + dy])
-        setpt_line.set_data([-0.7, 0.7], [setpts[idx], setpts[idx]])
-        return [body, r_left, r_right, setpt_line]
-
-    anim = FuncAnimation(fig, update, frames=N // sub, interval=40, blit=False)
-    save(anim, "quadrotor_pid", fps=25)
 
 
 # ----- 7. 2-link IK tracing circle -----
@@ -508,9 +441,12 @@ def anim_icp():
 
 # ----- 9. CBF safety filter — point robot dodging disk -----
 def anim_cbf():
-    obs = np.array([3.0, 1.5]); r_obs = 1.0
+    # Obstacle OFFSET from the start->goal line so the CBF can find a
+    # nonzero tangent direction at the boundary. With obs exactly on the
+    # line, u_nom is radial and projection -> zero -> robot stalls.
+    obs = np.array([3.0, 0.7]); r_obs = 1.0
     goal = np.array([6.0, 3.0]); start = np.array([0.0, 0.0])
-    K_p, u_max, gamma, dt = 0.8, 1.0, 2.0, 0.05
+    K_p, u_max, gamma, dt = 1.0, 1.0, 5.0, 0.05
     N_sim = int(12 / dt)
 
     def run(use_cbf):
@@ -729,65 +665,6 @@ def anim_ekf_slam():
     save(anim, "ekf_slam", fps=15)
 
 
-# ----- 12. Dynamic vs kinematic bicycle slalom -----
-def anim_bicycle_compare():
-    L = 2.5; dt = 0.05; N = 600
-    v = 25.0
-    slalom = lambda t: 0.1 * np.sin(0.6 * t)
-
-    # Kinematic
-    s_k = np.zeros(3); kin = np.zeros((N, 3))
-    for i in range(N):
-        delta = slalom(i * dt)
-        s_k[0] += v * np.cos(s_k[2]) * dt
-        s_k[1] += v * np.sin(s_k[2]) * dt
-        s_k[2] += v * np.tan(delta) / L * dt
-        kin[i] = s_k
-
-    # Dynamic
-    m_v, Iz = 1500.0, 3000.0; lf, lr = 1.2, 1.3; Cf = Cr = 80000.0
-    s_d = np.array([0.0, 0.0, 0.0, v, 0.0, 0.0])
-    dyn = np.zeros((N, 6))
-    for i in range(N):
-        delta = slalom(i * dt)
-        x_, y_, th, vx, vy, r = s_d
-        af = delta - np.arctan2(vy + lf * r, vx)
-        ar =       - np.arctan2(vy - lr * r, vx)
-        Fyf = Cf * af; Fyr = Cr * ar
-        vy_dot = (Fyf * np.cos(delta) + Fyr) / m_v - vx * r
-        r_dot  = (lf * Fyf * np.cos(delta) - lr * Fyr) / Iz
-        s_d[0] += (vx * np.cos(th) - vy * np.sin(th)) * dt
-        s_d[1] += (vx * np.sin(th) + vy * np.cos(th)) * dt
-        s_d[2] += r * dt
-        s_d[4] += vy_dot * dt
-        s_d[5] += r_dot * dt
-        dyn[i] = s_d
-
-    sub = 4
-    fig, ax = plt.subplots(figsize=(10, 5))
-    kin_line, = ax.plot([], [], "b-", lw=2, label="Kinematic (no slip)")
-    dyn_line, = ax.plot([], [], "r-", lw=2, label="Dynamic (tire slip)")
-    kin_dot, = ax.plot([], [], "bo", ms=8)
-    dyn_dot, = ax.plot([], [], "ro", ms=8)
-    ax.set_xlim(0, max(kin[-1, 0], dyn[-1, 0]) * 1.05)
-    ax.set_ylim(min(kin[:, 1].min(), dyn[:, 1].min()) - 1,
-                max(kin[:, 1].max(), dyn[:, 1].max()) + 1)
-    ax.legend(loc="upper right"); ax.grid()
-    ax.set_xlabel("x (m)"); ax.set_ylabel("y (m)")
-    ax.set_title(f"Slalom at v = {v} m/s — kinematic vs dynamic bicycle")
-
-    def update(frame):
-        i = min(frame * sub, N - 1)
-        kin_line.set_data(kin[:i + 1, 0], kin[:i + 1, 1])
-        dyn_line.set_data(dyn[:i + 1, 0], dyn[:i + 1, 1])
-        kin_dot.set_data([kin[i, 0]], [kin[i, 1]])
-        dyn_dot.set_data([dyn[i, 0]], [dyn[i, 1]])
-        return [kin_line, dyn_line, kin_dot, dyn_dot]
-
-    anim = FuncAnimation(fig, update, frames=N // sub, interval=50, blit=False)
-    save(anim, "bicycle_compare", fps=20)
-
-
 # ----- 13. Occupancy grid building scan-by-scan -----
 def anim_occupancy():
     np.random.seed(0)
@@ -917,14 +794,11 @@ def main():
     anim_pf()
     anim_pendulum()
     anim_pure_pursuit()
-    anim_quadrotor()
     anim_ik()
     anim_icp()
-    # New (council uprev): 6 more covering the new flagship + uprev'd content
     anim_cbf()
     anim_mpc_cartpole()
     anim_ekf_slam()
-    anim_bicycle_compare()
     anim_occupancy()
     anim_sympy_pendulum()
     print("Done.")

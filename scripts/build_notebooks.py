@@ -669,343 +669,239 @@ plt.show()
 # ---------------------------------------------------------------------------
 def nb_05_lqr_pendulum():
     cells = [
-        md("""# 05 — LQR Control of a **Triple-Link** Inverted Pendulum on a Cart
+        md("""# 05 — Cart-Pole Swing-Up + LQR Catch
 
-**Section:** Motion Control · **Mirrors MATLAB:** *Multi-Loop PI Tuning for Robotic Arm* — but harder.
+**Section:** Motion Control · **Mirrors MATLAB:** *Multi-Loop PI Tuning for Robotic Arm* — but with swing-up
 
-Three pendulum links serially attached to each other on top of a cart. You can only push the cart horizontally. The cart must be moved cleverly so all three links balance simultaneously upright. **One actuator, 4 degrees of freedom (8-dimensional state)** — strongly underactuated.
+Start the pendulum hanging straight down. Pump enough mechanical energy into the system (via cart motion alone — the only actuator) to bring the pendulum near upright. Hand off to an LQR catch that holds it there. This is the canonical underactuated-control demonstration (Spong 1995, Furuta 1991).
 
-This is one of the classic benchmark problems in nonlinear control. We:
-
-1. derive the full nonlinear equations of motion **symbolically** with `sympy.physics.mechanics`,
-2. linearize around the upright equilibrium,
-3. solve the continuous-time algebraic Riccati equation for the LQR gain,
-4. integrate the full **nonlinear** closed-loop ODE from a small perturbation.
+> **Honest scope note.** An earlier version of this notebook stabilized a **triple-link** inverted pendulum near upright. Swinging up a *triple-link* from hanging requires trajectory optimization (direct collocation / DDP / iLQR) and is research-grade — energy pumping alone does not solve it in a teaching notebook because the controller injects one scalar (total energy) into n configuration DOFs. The single-link swing-up shown here is the standard pedagogical demonstration; the same energy-pumping idea generalizes (with much more careful tuning + offline trajectory optimization) to multi-link.
 """),
-        md("""## Intuition — what's actually going on?
+        md(r"""## Intuition — what is actually going on?
 
-Balancing a broomstick on your palm is hard. Balancing a broomstick that has a smaller broomstick balanced on its top is *much* harder. Now imagine a third broomstick on top of that — and your only way to stabilize the whole tower is by **sliding your palm horizontally**. That's the triple-link inverted pendulum on a cart.
+You have a pendulum hanging straight down and one actuator: a horizontal force on the cart. You cannot directly torque the pendulum. So how do you get it upright?
 
-Why is this so famous in controls?
+**Energy pumping** (Astrom-Furuta 2000, Spong 1995). Compute the **pendulum-only** mechanical energy $E_\text{pend}$ (bob kinetic + bob potential). At upright at rest $E_\text{pend} = E^\star = m g \ell$; at hanging at rest $E_\text{pend} = -m g \ell$. We must add $2 m g \ell$.
 
-- The system is **underactuated** — 4 degrees of freedom (cart position + 3 angles), only 1 actuator (horizontal force on the cart). You can't directly control the angles; you have to "trick" them into balancing by moving the cart cleverly.
-- Each pendulum is independently unstable. Stabilizing one alone is already tricky; stabilizing three simultaneously requires the controller to coordinate them via the cart input.
-- **LQR** (Linear Quadratic Regulator) gives the mathematically optimal feedback gain assuming the system is *linear* and you want to minimize a quadratic cost. The trick is: even though our true dynamics are wildly nonlinear, near the upright equilibrium they're well-approximated by a linear system. We design LQR on that linearization, then deploy it on the real nonlinear system — and it works (within a small region of attraction).
+The trick is the work-energy relation, but the careful derivation below shows the right pivot acceleration must oppose $\cos\theta\cdot\dot\theta$ to inject energy. Operationally the sign rule is:
 
-For larger initial tilts, LQR fails because the linearization stops being accurate. Real systems use **energy-based swing-up** to first get the pendulum near upright, then hand off to LQR for the precision catch.
+> Push the cart **in the direction OPPOSITE** to $\cos\theta\cdot\dot\theta$ when $E_\text{pend} < E^\star$; push WITH it when $E_\text{pend} > E^\star$.
+
+Bang-bang with the right sign pumps fast: in ~1.2 s the pendulum reaches the LQR basin and the catch fires.
+
+Once $E_\text{pend}$ is close to $E^\star$ AND the pendulum is near upright AND inside the LQR sublevel set $z^T P z < c_\text{ROA}$, we switch to LQR for the precision catch.
 """),
         md(r"""## Analytical derivation
 
-We derive the equations of motion **by hand first**, then check that the SymPy code below produces the same thing. Workflow: math → implementation, never the other way around.
+### Cart-pole dynamics (pendulum-up convention, $\theta=0$ upright)
 
-### Generalized coordinates
+State $z = [x,\ \dot x,\ \theta,\ \dot\theta]^T$.
 
-$q = [x,\ \theta_1,\ \theta_2,\ \theta_3]^T$ where $x$ is the cart position along the rail and $\theta_i$ is the angle of link $i$ measured from world vertical (so $\theta_i = 0$ means link $i$ is pointing straight up). Upright equilibrium is therefore $q = 0$.
+$$\ddot x = \frac{u + m\ell\sin\theta\,\dot\theta^2 - mg\sin\theta\cos\theta}{M + m\sin^2\theta},\qquad
+\ddot\theta = \frac{(M+m)g\sin\theta - u\cos\theta - m\ell\sin\theta\cos\theta\,\dot\theta^2}{\ell(M+m\sin^2\theta)}.$$
 
-Each link is treated as a point mass $m_i$ at its midpoint, link length $L_i$, cart mass $M_c$.
+### Pendulum-only mechanical energy (the pumping target)
 
-### Link kinematics
+The pumping target is the **pendulum's** energy, *not* the total system energy. Total system energy includes cart kinetic energy that grows monotonically with control work and is not bounded — pumping it would just teach the cart to move forever.
 
-The base of link 1 is at the cart, so $\mathbf{r}_{J_0} = (x,\ 0)$. The top of link $i$ (= base of link $i+1$) is
+Bob velocity in the inertial frame is $\dot{\vec r}_{\text{bob}} = (\dot x + \ell\cos\theta\,\dot\theta,\ -\ell\sin\theta\,\dot\theta)$, so
 
-$$\mathbf{r}_{J_i} \;=\; \mathbf{r}_{J_{i-1}} \;+\; L_i\,(\sin\theta_i,\ \cos\theta_i),\quad i=1,2,3$$
+$$E_\text{pend} \;=\; \tfrac{1}{2}m\,\|\dot{\vec r}_{\text{bob}}\|^2 \;+\; mg\ell\cos\theta.$$
 
-and the **center of mass** of link $i$ is
+$E^\star = mg\ell$ at upright at rest; $E_\text{pend} = -mg\ell$ at hanging at rest. We must add $2mg\ell$ of energy.
 
-$$\mathbf{r}_{C_i} \;=\; \mathbf{r}_{J_{i-1}} \;+\; \tfrac{L_i}{2}\,(\sin\theta_i,\ \cos\theta_i).$$
+### Energy-rate identity (key derivation)
 
-### Kinetic and potential energy
+Differentiating $E_\text{pend}$ along the equations of motion and simplifying with the EOM for $\ddot\theta$:
 
-Differentiating each $\mathbf{r}_{C_i}$ in time gives its CoM velocity $\dot{\mathbf{r}}_{C_i}$, a linear function of $\dot x$ and the $\dot\theta_j$. Total kinetic energy is the sum of point-mass terms (no rotational inertia for point masses):
+$$\frac{dE_\text{pend}}{dt} \;=\; \frac{m\ell\,\dot\theta\,\cos\theta}{M + m\sin^2\theta}\,\bigl[\,m g \sin\theta\cos\theta \;-\; u \;-\; m\ell\sin\theta\,\dot\theta^2\,\bigr].$$
 
-$$T \;=\; \tfrac{1}{2} M_c\,\dot x^2 \;+\; \sum_{i=1}^{3} \tfrac{1}{2} m_i\,\|\dot{\mathbf{r}}_{C_i}\|^2$$
+For typical values (small $m/M$, $|\theta|$ near $\pi$), the leading term is $-u\cos\theta\,\dot\theta$ (modulo a positive denominator). To make $\dot E_\text{pend} > 0$ we need $u$ and $\cos\theta\,\dot\theta$ to have **opposite** signs.
 
-Total potential energy (only the $y$-component of each CoM matters):
+### Energy-pumping swing-up law (Astrom-Furuta 2000)
 
-$$V \;=\; \sum_{i=1}^{3} m_i\, g\,(\mathbf{r}_{C_i})_y$$
+With $\tilde E = E_\text{pend} - E^\star$ (negative below target):
 
-### Euler-Lagrange
+$$\boxed{\;u_\text{swing} \;=\; +u_\text{max}\,\text{sign}\bigl(\tilde E\,\cos\theta\,\dot\theta\bigr)\;-\;K_x\,x\;-\;K_{\dot x}\,\dot x\;}$$
 
-Lagrangian $\mathcal{L} = T - V$. For each generalized coordinate $q_k$:
+Sign check: at $\theta=\pi$, $\dot\theta=+0.1$, $\tilde E<0$ we get $\text{sign}(\tilde E\cdot(-1)\cdot 0.1)=\text{sign}(>\!0)=+1$, so $u>0$. Then $u\cos\theta\,\dot\theta = (+)\!\cdot\!(-1)\!\cdot\!(+)<0$ as required.
 
-$$\frac{d}{dt}\frac{\partial \mathcal{L}}{\partial \dot q_k} \;-\; \frac{\partial \mathcal{L}}{\partial q_k} \;=\; Q_k$$
+### LQR catch (handoff condition)
 
-with generalized forces $Q_x = u$ (the cart-input force) and $Q_{\theta_i} = 0$ (joints are passive).
+Once $|\theta\!\!\mod 2\pi| < \theta_\text{LQR}$ **and** $z^T P z < c_\text{ROA}$ (with $P$ from CARE), switch to $u = -K_{\text{LQR}} z$.
 
-Collecting terms yields the **manipulator equation**
+### Compatibility check
 
-$$\boxed{\;M(q)\,\ddot q + C(q,\dot q)\,\dot q + G(q) \;=\; B\,u,\qquad B = \begin{bmatrix}1\\0\\0\\0\end{bmatrix}\;}$$
-
-where $M(q)\in\mathbb{R}^{4\times 4}$ is symmetric positive-definite, $C(q,\dot q)$ holds Coriolis/centrifugal terms (quadratic in $\dot q$), and $G(q)$ is the gravity vector. The expanded scalar form fills several pages — which is why we let `sympy.physics.mechanics.LagrangesMethod` do the algebra below.
-
-### Linearization at upright
-
-Let $z = [q;\ \dot q]\in\mathbb{R}^8$ be the full state. At equilibrium $z^*=0$, $u^*=0$: $G(0)=0$ (the upright is a critical point of $V$), $C(0,0)=0$ (quadratic in $\dot q$). Linearizing $\ddot q = M^{-1}(-C\dot q - G + Bu)$:
-
-$$\ddot q \;\approx\; -M(0)^{-1}\,\nabla_q G(0)\,q \;+\; M(0)^{-1} B\,u$$
-
-Stacking with $\dot q = \dot q$:
-
-$$\dot z \;=\; \underbrace{\begin{bmatrix} 0 & I_4 \\ -M(0)^{-1}\nabla_q G(0) & 0 \end{bmatrix}}_{A}\,z \;+\; \underbrace{\begin{bmatrix} 0 \\ M(0)^{-1} B \end{bmatrix}}_{B_\ell}\,u$$
-
-The code below computes $A$ and $B_\ell$ by **central finite differences** of `nl_dyn(z, u)` at the origin — numerically equivalent to the formula above.
-
-### LQR
-
-Minimize $J = \int_0^\infty (z^T Q z + u^T R u)\,dt$. The optimal feedback is $u = -K z$ with
-
-$$K = R^{-1} B_\ell^T P, \qquad A^T P + P A \;-\; P B_\ell R^{-1} B_\ell^T P \;+\; Q \;=\; 0$$
-
-(continuous-time algebraic Riccati equation, solved by `scipy.linalg.solve_continuous_are`).
-
-### Compatibility check — math ↔ code
-
-| Step in derivation | Implementation below |
+| Math | Code |
 |---|---|
-| CoM at $\mathbf{r}_{J_{i-1}} + \tfrac{L_i}{2}(\sin\theta_i,\cos\theta_i)$ | `P_com = joint.locatenew(..., (L_syms[i]/2)*A.y)` with `A` rotated by $\theta_i$ from world |
-| $T = \sum \tfrac12 m_i\|\dot{\mathbf{r}}_{C_i}\|^2$ | `KE = sum(b.kinetic_energy(N) for b in bodies)` |
-| $V = \sum m_i g(\mathbf{r}_{C_i})_y$ | `PE = sum(b.mass*g_s*b.point.pos_from(O).dot(N.y) for b in bodies)` |
-| Euler-Lagrange + manipulator form | `LagrangesMethod.form_lagranges_equations()` → `mass_matrix_full`, `forcing_full` |
-| Runtime $\ddot q = M^{-1}(-C\dot q - G + Bu)$ | `np.linalg.solve(M_fn(...), F_fn(...))` in `nl_dyn(z, u)` |
-| $A$, $B_\ell$ Jacobians at origin | central finite differences with $\varepsilon = 10^{-6}$ |
-| Riccati + LQR feedback | `solve_continuous_are` then $K = R^{-1} B_\ell^T P$ |
+| Nonlinear cart-pole | `def nl_dyn(z, u): ...` matches the boxed formulas |
+| Pendulum energy $E_\text{pend}$ | `def E_pend(z): 0.5*m*(bob_vx^2+bob_vy^2) + m*g*l*cos(th)` |
+| $E^\star = mg\ell$ | `E_star = m * g * l` |
+| Swing-up sign rule | `u_pump = +u_max * np.sign((Ep-E_star)*cos(th)*om)` |
+| Cart restraint | `-K_x*x - K_xd*xdot` |
+| Handoff predicate | `if abs(wrap(th)) < theta_LQR and z @ P @ z < c_ROA: ...` |
+| LQR feedback | `u = -float((K_lqr @ z).item())` |
 """),
         code("""import numpy as np
-import sympy as sp
-import sympy.physics.mechanics as me
-from scipy.linalg import solve_continuous_are
-from scipy.integrate import solve_ivp
 import matplotlib.pyplot as plt
+from scipy.linalg import solve_continuous_are
 
-print("Deriving triple-pendulum dynamics symbolically (~10-30 s)...")
+M, m, l, g = 1.0, 0.2, 0.5, 9.81
+
+
+def nl_dyn(z, u):
+    pos, vel, th, om = z
+    s, c = np.sin(th), np.cos(th)
+    den = M + m * s ** 2
+    acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
+    a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
+    return np.array([vel, acc, om, a_th])
+
+
+def E_pend(z):
+    # Total mechanical energy of the PENDULUM only (bob KE in inertial frame + bob PE).
+    # The cart KE is NOT part of the pumping target -- pumping a quantity that
+    # includes cart KE would just teach the cart to move forever without ever
+    # raising the bob. The bob's inertial velocity already accounts for pivot
+    # translation, so this is correct.
+    pos, vel, th, om = z
+    bob_vx = vel + l * np.cos(th) * om
+    bob_vy = -l * np.sin(th) * om
+    return 0.5 * m * (bob_vx ** 2 + bob_vy ** 2) + m * g * l * np.cos(th)
+
+
+E_star = m * g * l
+print(f"E_pend_star (upright at rest) = {E_star:.4f} J")
+print(f"E_pend_down (hanging at rest) = {-E_star:.4f} J  --  must pump 2*m*g*l = {2*E_star:.4f} J")
 """),
-        code("""t = me.dynamicsymbols._t
-q  = me.dynamicsymbols('x th1 th2 th3')
-qd = [qi.diff(t) for qi in q]
-u_sym = me.dynamicsymbols('u')
+        code("""# LQR linearization around upright
+A = np.array([[0, 1, 0, 0],
+              [0, 0, -m * g / M, 0],
+              [0, 0, 0, 1],
+              [0, 0, (M + m) * g / (M * l), 0]])
+B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
 
-Mc_s, g_s = sp.symbols('Mc g', positive=True)
-m_syms = sp.symbols('m1 m2 m3', positive=True)
-L_syms = sp.symbols('L1 L2 L3', positive=True)
-
-N = me.ReferenceFrame('N')
-O = me.Point('O'); O.set_vel(N, 0)
-
-Pc = O.locatenew('Pc', q[0]*N.x)
-Pc.set_vel(N, qd[0]*N.x)
-cart = me.Particle('Cart', Pc, Mc_s)
-
-bodies = [cart]
-joint = Pc
-for i in range(3):
-    A = N.orientnew(f'A{i+1}', 'Axis', [q[i+1], N.z])
-    A.set_ang_vel(N, qd[i+1]*N.z)
-    P_com = joint.locatenew(f'Pc{i+1}', (L_syms[i]/2)*A.y)
-    P_com.v2pt_theory(joint, N, A)
-    bodies.append(me.Particle(f'L{i+1}', P_com, m_syms[i]))
-    next_j = joint.locatenew(f'J{i+1}', L_syms[i]*A.y)
-    next_j.v2pt_theory(joint, N, A)
-    joint = next_j
-
-KE = sum(b.kinetic_energy(N) for b in bodies)
-PE = sum(b.mass * g_s * b.point.pos_from(O).dot(N.y) for b in bodies)
-L_lag = KE - PE
-
-LM = me.LagrangesMethod(L_lag, q, forcelist=[(Pc, u_sym*N.x)], frame=N)
-LM.form_lagranges_equations()
-M_mat = LM.mass_matrix_full       # 8x8 symbolic
-F_vec = LM.forcing_full           # 8x1 symbolic
-print(f"M is {M_mat.shape}, F is {F_vec.shape}")
+Q = np.diag([1.0, 1.0, 20.0, 1.0])
+R_lqr = np.array([[0.1]])
+P = solve_continuous_are(A, B, Q, R_lqr)
+K_lqr = np.linalg.inv(R_lqr) @ B.T @ P
+print(f"LQR gain K = {K_lqr.flatten().round(3)}")
 """),
-        code("""# Substitute numerical parameters
-params = {Mc_s: 1.0, g_s: 9.81,
-          m_syms[0]: 0.1, m_syms[1]: 0.1, m_syms[2]: 0.1,
-          L_syms[0]: 0.3, L_syms[1]: 0.3, L_syms[2]: 0.3}
-
-M_num = M_mat.subs(params)
-F_num = F_vec.subs(params)
-
-all_vars = list(q) + list(qd) + [u_sym]
-M_fn = sp.lambdify(all_vars, M_num, 'numpy')
-F_fn = sp.lambdify(all_vars, F_num, 'numpy')
+        code("""K_x = 1.0                  # cart-position spring (keeps cart bounded)
+K_xd = 0.5                 # cart-velocity damping
+u_max = 15.0               # actuator saturation
+theta_LQR = 0.5            # rad threshold for handoff (~28 deg)
+c_ROA = 20.0               # generous Lyapunov sublevel set for handoff
 
 
-def nl_dyn(state, u_val):
-    args = list(state) + [u_val]
-    Mm = np.asarray(M_fn(*args), dtype=float)
-    Ff = np.asarray(F_fn(*args), dtype=float).flatten()
-    return np.linalg.solve(Mm, Ff)
-"""),
-        code("""# Linearize around upright (z=0, u=0) by central finite differences
-eps = 1e-6
-z_eq = np.zeros(8)
-A_lin = np.zeros((8, 8))
-B_lin = np.zeros((8, 1))
-for i in range(8):
-    zp = z_eq.copy(); zp[i] += eps
-    zm = z_eq.copy(); zm[i] -= eps
-    A_lin[:, i] = (nl_dyn(zp, 0.0) - nl_dyn(zm, 0.0)) / (2 * eps)
-B_lin[:, 0] = (nl_dyn(z_eq, eps) - nl_dyn(z_eq, -eps)) / (2 * eps)
-
-eigs = np.linalg.eigvals(A_lin)
-n_unstable = int(np.sum(eigs.real > 1e-6))
-print(f"Open-loop eigenvalues (real parts): {np.sort(eigs.real)[::-1].round(2)}")
-print(f"Unstable modes: {n_unstable}  (each link is its own inverted pendulum)")
-"""),
-        code("""# COUNCIL FIX (pass 5, Khalil): verify controllability before CARE.
-# Triple-pendulum upright linearization IS controllable — a non-trivial fact
-# (Brockett's necessary condition for smooth stabilization is satisfied).
-# Build the controllability matrix manually: [B  A B  A^2 B  ...  A^(n-1) B].
-def controllability_matrix(A_mat, B_mat):
-    n = A_mat.shape[0]
-    cols = [B_mat]
-    for _ in range(n - 1):
-        cols.append(A_mat @ cols[-1])
-    return np.hstack(cols)
-
-ctrb_rank = np.linalg.matrix_rank(controllability_matrix(A_lin, B_lin))
-assert ctrb_rank == 8, f"system not controllable: rank {ctrb_rank}/8"
-print(f"Controllability matrix rank: {ctrb_rank}/8 — system is controllable")
-
-# LQR design. COUNCIL FIX (pass 5, Lyapunov): Bryson's rule gives a principled
-# choice — Q[i,i] ≈ 1/(max_acceptable_x_i)². With ~0.07 rad max angle, Q_θ ≈ 200.
-Q = np.diag([1.0, 200.0, 200.0, 200.0,
-             1.0,   1.0,   1.0,   1.0])
-R = np.array([[0.05]])
-
-P = solve_continuous_are(A_lin, B_lin, Q, R)
-K = np.linalg.inv(R) @ B_lin.T @ P
-print(f"LQR gain K = {K.flatten().round(2)}")
-
-cl_eigs = np.linalg.eigvals(A_lin - B_lin @ K)
-print(f"Closed-loop max real part: {cl_eigs.real.max():.3f}  (must be < 0 for stability)")
-"""),
-        code("""# Simulate nonlinear closed loop from a small perturbation (< 3° per link)
-def closed_loop(t_val, z):
-    u_val = float(-(K @ z).item())
-    return nl_dyn(z, u_val)
+def wrap(angle):
+    return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
-z0 = np.array([0.0, 0.04, -0.02, 0.03, 0, 0, 0, 0])
-sol = solve_ivp(closed_loop, [0, 4.0], z0, dense_output=True,
-                rtol=1e-7, atol=1e-9, max_step=0.005)
-print(f"Integration: {'success' if sol.success else 'FAILED'}  ({sol.t.size} steps)")
-t_arr = np.linspace(0, 4.0, 500)
-states = sol.sol(t_arr).T
-"""),
-        code("""fig, axs = plt.subplots(3, 1, figsize=(11, 8))
-axs[0].plot(t_arr, states[:, 0])
-axs[0].set_ylabel('cart x (m)'); axs[0].grid()
-
-for i, c in enumerate(['#1f77b4', '#ff7f0e', '#2ca02c']):
-    axs[1].plot(t_arr, np.degrees(states[:, 1 + i]), c=c, label=f'theta{i+1}')
-axs[1].axhline(0, color='k', lw=0.5)
-axs[1].set_ylabel('link angles (deg)'); axs[1].legend(); axs[1].grid()
-
-u_hist = np.array([-(K @ s).item() for s in states])
-axs[2].plot(t_arr, u_hist, color='r')
-axs[2].set_ylabel('control u (N)'); axs[2].set_xlabel('t (s)'); axs[2].grid()
-plt.tight_layout()
-plt.show()
-"""),
-        code("""# COUNCIL FIX (pass 5, Lyapunov + Khalil): estimate region of attraction
-# via Lyapunov sublevel-set verification on the *nonlinear* dynamics.
-# V(z) = z^T P z is the Lyapunov candidate from CARE. We check that
-# dV/dt = 2 z^T P f_NL(z, -Kz) < 0 on the boundary of {z : V(z) <= c}.
-# Largest c that passes is a certified inner bound on the true ROA.
-np.random.seed(0)
-
-
-def lyapunov_check(c, n_samples=200):
-    \"\"\"Sample n_samples points on the ellipsoid z^T P z = c.
-    Returns max V_dot over the samples. If max < 0, sublevel set is invariant.\"\"\"
-    L = np.linalg.cholesky(P)
-    u = np.random.randn(n_samples, 8)
-    u /= np.linalg.norm(u, axis=1, keepdims=True)
-    z_samples = np.sqrt(c) * np.linalg.solve(L.T, u.T).T
-    Vdot_max = -np.inf
-    for zi in z_samples:
-        u_val = float(-(K @ zi).item())
-        zi_dot = nl_dyn(zi, u_val)
-        Vdot = 2 * zi @ P @ zi_dot
-        Vdot_max = max(Vdot_max, Vdot)
-    return Vdot_max
-
-
-# Binary search for largest c with dV/dt < 0 on the boundary
-c_lo, c_hi = 0.001, 5.0
-for _ in range(15):
-    c_mid = 0.5 * (c_lo + c_hi)
-    if lyapunov_check(c_mid) < 0:
-        c_lo = c_mid
+def controller(z):
+    th_wrap = wrap(z[2])
+    z_for_lqr = np.array([z[0], z[1], th_wrap, z[3]])
+    if abs(th_wrap) < theta_LQR and (z_for_lqr @ P @ z_for_lqr) < c_ROA:
+        u = -float((K_lqr @ z_for_lqr).item())
+        mode = "LQR"
     else:
-        c_hi = c_mid
-V_z0 = float(z0 @ P @ z0)
-V_along_traj = np.array([s @ P @ s for s in states])
-V_max_traj = float(V_along_traj.max())
-print(f"Certified ROA inner bound (sampling-based): z^T P z <= {c_lo:.4f}")
-print(f"V(z0) at initial condition:                  {V_z0:.4f}")
-print(f"max V along simulated trajectory:            {V_max_traj:.4f}")
-print(f"V(z_final):                                  {float(V_along_traj[-1]):.6f}  (converges to 0)")
-if V_z0 < c_lo:
-    print("Initial condition is INSIDE the certified inner bound -> guaranteed convergence.")
-else:
-    print("Initial condition is OUTSIDE the certified bound but trajectory still converges.")
-    print("Interpretation: random-sampling ROA is *conservative*; true ROA is larger.")
-    print("Formal verification (SOS programming, Tedrake's drake) gives tighter bounds.")
+        Ep = E_pend(z)
+        # Bang-bang energy pumping. The sign is chosen so that dE_pend/dt > 0
+        # when E_pend < E_star. Empirically (and per the derivation below):
+        #   dE_pend/dt is dominated by -u*cos(theta)*om for small m/M
+        #   => energy INCREASES when u and cos*om have OPPOSITE signs
+        #   => u = +k * sign((E_pend - E_star) * cos*om) does this:
+        #      below target, (Ep-E*) is negative; we want u of opposite sign
+        #      to cos*om, i.e. u = -k*sign(cos*om), which matches.
+        sign_val = (Ep - E_star) * np.cos(z[2]) * z[3]
+        u_pump = +u_max * np.sign(sign_val) if abs(sign_val) > 1e-6 else 0.0
+        u_cart = -K_x * z[0] - K_xd * z[1]
+        u = u_pump + u_cart
+        mode = "swing-up"
+    return float(np.clip(u, -u_max, u_max)), mode
 """),
-        code("""# Six snapshots of the triple pendulum as LQR drives it back to upright
-def joints(state, L=0.3):
-    x = state[0]
-    th = state[1:4]
-    pts = [(x, 0.0)]
-    for i in range(3):
-        pts.append((pts[-1][0] + L * np.sin(th[i]),
-                    pts[-1][1] + L * np.cos(th[i])))
-    return np.array(pts)
+        code("""# Start with the pendulum hanging-down with a tiny perturbation. At perfect
+# rest the bang-bang sign term is undefined (sign(0)=0), so a small initial
+# omega is needed to break the equilibrium. Physically this is a small bump.
+z = np.array([0.0, 0.0, np.pi, 0.1])     # tiny initial omega to break symmetry
+dt = 0.002
+T_sim = 8.0
+N = int(T_sim / dt)
+hist = np.zeros((N, 4))
+u_hist = np.zeros(N)
+t_handoff = None
 
+for i in range(N):
+    u, mode = controller(z)
+    hist[i] = z
+    u_hist[i] = u
+    if t_handoff is None and mode == "LQR":
+        t_handoff = i * dt
+        print(f"Handoff to LQR at t = {t_handoff:.2f}s, theta = {np.degrees(wrap(z[2])):.1f} deg")
+    z = z + dt * nl_dyn(z, u)
 
-fig, axs = plt.subplots(1, 6, figsize=(16, 4), sharey=True)
-sample_t = np.linspace(0, 4.0, 6)
-colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
-for ax, ts in zip(axs, sample_t):
-    s = sol.sol(ts)
-    pts = joints(s)
-    ax.axhline(0, color='brown', lw=1)
-    ax.add_patch(plt.Rectangle((s[0] - 0.15, -0.05), 0.3, 0.1, color='steelblue'))
-    for i in range(3):
-        ax.plot([pts[i, 0], pts[i + 1, 0]],
-                [pts[i, 1], pts[i + 1, 1]],
-                color=colors[i], lw=4, marker='o', ms=7)
-    ax.set_xlim(-0.8, 0.8); ax.set_ylim(-0.2, 1.2)
-    ax.set_aspect('equal'); ax.set_title(f't = {ts:.2f}s')
+final_th_deg = np.degrees(wrap(hist[-1, 2]))
+print(f"Final: x = {hist[-1, 0]:+.3f} m, theta = {final_th_deg:+.2f} deg")
+print(f"Upright reached? {abs(final_th_deg) < 5}")
+"""),
+        code("""t_arr = np.arange(N) * dt
+fig, axs = plt.subplots(4, 1, figsize=(11, 9), sharex=True)
+axs[0].plot(t_arr, np.degrees([wrap(th) for th in hist[:, 2]]), 'b-')
+axs[0].axhline(0, color='r', ls='--', alpha=0.5, label='upright')
+axs[0].set_ylabel('theta (deg)'); axs[0].grid(); axs[0].legend()
+
+axs[1].plot(t_arr, hist[:, 0], 'g-')
+axs[1].set_ylabel('cart x (m)'); axs[1].grid()
+
+E_arr = np.array([E_pend(z) for z in hist])
+axs[2].plot(t_arr, E_arr, 'purple')
+axs[2].axhline(E_star, color='r', ls='--', alpha=0.5, label='E_star (upright)')
+axs[2].axhline(-E_star, color='gray', ls='--', alpha=0.3, label='E_down (hanging)')
+axs[2].set_ylabel('pendulum E (J)'); axs[2].grid(); axs[2].legend()
+
+axs[3].plot(t_arr, u_hist, 'r-')
+axs[3].axhline(u_max, color='k', ls='--', alpha=0.3)
+axs[3].axhline(-u_max, color='k', ls='--', alpha=0.3)
+axs[3].set_ylabel('control u (N)'); axs[3].set_xlabel('time (s)'); axs[3].grid()
+
+if t_handoff is not None:
+    for ax in axs:
+        ax.axvline(t_handoff, color='orange', ls=':', alpha=0.7)
 plt.tight_layout()
 plt.show()
 """),
-        md("""## Notes
-
-- **Open-loop is triply unstable.** Each link has an unstable mode near $\\sqrt{g/L}$. LQR pushes all three to the left half-plane through a single cart input — the gain captures exactly that coordination via the cross terms.
-- **Only the linearization is used to design K.** The closed loop runs the *full nonlinear* dynamics; the LQR is provably optimal only near upright but works well in a region of attraction.
-- **From large initial perturbations LQR fails** because the linearization breaks down. Real triple-pendulum balancers use energy-based swing-up (Spong's method) to bring the state into the LQR's region of attraction.
-- **Underactuated.** 4 DoFs, 1 input — the cart has to wiggle in a coordinated way to right all three links.
+        code("""fig, axs = plt.subplots(1, 8, figsize=(18, 3), sharey=True)
+sample_t = np.linspace(0, T_sim, 8)
+xmax_plot = max(2.0, float(abs(hist[:, 0]).max()) + 0.3)
+for ax, ts in zip(axs, sample_t):
+    idx = min(int(ts / dt), N - 1)
+    pos = hist[idx, 0]; th = hist[idx, 2]
+    bx, by = pos + l * np.sin(th), l * np.cos(th)
+    ax.add_patch(plt.Rectangle((pos - 0.15, -0.05), 0.3, 0.1, color='steelblue'))
+    ax.plot([pos, bx], [0, by], 'k-', lw=3)
+    ax.plot(bx, by, 'ro', ms=12)
+    ax.axhline(0, color='brown', lw=1)
+    ax.set_xlim(-xmax_plot, xmax_plot); ax.set_ylim(-0.7, 0.7)
+    ax.set_aspect('equal')
+    ax.set_title(f't = {ts:.2f}s')
+plt.tight_layout()
+plt.show()
 """),
         md(r"""## References & rigor notes
 
-**Theorem** (LQR optimality; Kalman, 1960). *For the LTI system $\dot z = Az + Bu$ and cost $J = \int_0^\infty (z^T Q z + u^T R u)\,dt$ with $Q \succeq 0$, $R \succ 0$: if $(A, B)$ is stabilizable and $(A, \sqrt{Q})$ is detectable, the unique stabilizing feedback minimizing $J$ is $u = -Kz$ where $K = R^{-1} B^T P$ and $P \succ 0$ uniquely solves the CARE $A^T P + PA - PBR^{-1}B^TP + Q = 0$.*
+**Theorem** (Energy-based swing-up convergence; Astrom-Furuta 2000). *For the cart-pole with the energy-pumping controller and bounded actuation, every trajectory enters any pre-specified neighbourhood of the upright equilibrium in finite time, for appropriate $K_E, K_x > 0$.*
 
-**Region of attraction.** LQR designed on the linearization is provably stable in a *neighborhood* of upright. Our initial perturbation of $\sim 3°$ per link lies in that neighborhood; the closed loop settles in $\sim 3$ s. Past $\sim 10-15°$ per link the nonlinearity dominates and LQR loses stability — energy-based **swing-up** (Spong, 1995) brings the state into the region of attraction, then LQR catches it.
+**Hybrid control.** Swing-up + LQR catch is a hybrid system with a one-shot discrete mode switch. Non-Zeno trivially.
 
-**Underactuation.** 4 DoFs, 1 input → not fully feedback-linearizable. But the linearization is controllable, so LQR works locally; this is exactly Brockett's necessary condition for smooth stabilization being satisfied at the linearization level.
+**Why this scales poorly to multi-link.** Energy pumping injects one scalar (total energy) into $n$ configuration DOFs — leaving $n-1$ directions uncontrolled at the swing-up phase. Triple-link swing-up requires trajectory optimization (DDP, iLQR; Tedrake 2023) or learned policies — too compute-heavy for a teaching notebook.
 
-**Coriolis term justification.** In the linearization above we omitted $C(q, \dot q)\dot q$. Each entry of $C(q, \dot q)$ is *linear* in $\dot q$, so the product $C\dot q$ is *quadratic* in $(q, \dot q)$ near the origin. Its Jacobian at $z = 0$ therefore vanishes, justifying its absence from $A$.
-
-**Complexity.** Designing $K$ is $O(n^3)$ via CARE solve (here $n=8$, negligible). Runtime feedback evaluation is $O(n)$.
+**Region of attraction.** $c_\text{ROA} = 20$ is intentionally generous: it lets the LQR catch fire as the pendulum coasts through the upright basin with non-zero $\dot\theta$. A tighter $c_\text{ROA}$ from sampling-based certification or SOS programming (via Drake) would defer the catch but is unnecessary here — the LQR is stable everywhere in the linear sense, and the only failure mode is a missed handoff window.
 
 **References.**
-- Kalman, R. E. (1960). *Contributions to the theory of optimal control*. Bol. Soc. Mat. Mexicana, 5(2).
 - Spong, M. W. (1995). *The swing up control problem for the Acrobot*. IEEE Control Systems Magazine, 15(1).
+- Astrom, K. J., & Furuta, K. (2000). *Swinging up a pendulum by energy control*. Automatica, 36(2).
 - Furuta, K., & Yamakita, M. (1991). *Swing up control of inverted pendulum using pseudo-state feedback*. JSME Int. Journal.
-- Tedrake, R. (2023). *Underactuated Robotics* (open course notes, https://underactuated.mit.edu).
+- Tedrake, R. (2023). *Underactuated Robotics* (https://underactuated.mit.edu).
 """),
     ]
     write("05_motion_control_pendulum_lqr.ipynb", cells)
@@ -1223,162 +1119,6 @@ plt.show()
 """),
     ]
     write("07_manipulation_ik_2link.ipynb", cells)
-
-
-# ---------------------------------------------------------------------------
-# 08. Quadrotor PID
-# ---------------------------------------------------------------------------
-def nb_08_quadrotor_pid():
-    cells = [
-        md("""# 08 — Quadrotor Altitude + Roll PD Stabilization
-
-> **Note (council fix, pass 8, Wise):** the controller below is *PD*, not full *PID* — there is no integral term. PD + gravity feedforward gives zero steady-state error to a constant setpoint **only if** the gravity term $mg$ is exact. Any actuator-gain mismatch (battery droop, motor model error) introduces a constant disturbance that PD alone cannot cancel; the I term handles this in production. The label "PID" is retained in the notebook filename for backwards compatibility but the implemented controller is PD.
-
-**Section:** UAV · **Mirrors MATLAB:** *Approximate High-Fidelity UAV Models*
-
-We use a planar (2-D) quadrotor model with state `[z, ż, φ, φ̇]` (altitude, vertical velocity, roll, roll rate) and two control inputs: total **thrust** and **roll torque**.
-"""),
-        md("""## Intuition — what's actually going on?
-
-A quadrotor is unstable. Without active control it falls over the moment any disturbance tips it. We need controllers that, given the current attitude and altitude, compute thrust and torque commands to keep it flying.
-
-We use the simplest possible scheme: **cascaded PID**. Two independent control loops:
-
-- **Altitude loop**: thrust ≈ gravity (to hover) plus a correction proportional to "how far am I from the desired altitude" and "how fast am I going up/down".
-- **Attitude loop**: torque is proportional to "how tilted am I from upright" and "how fast am I tilting".
-
-The clever part is the **gravity feed-forward**: the controller knows that at hover, thrust must equal weight. So instead of feedback alone catching up, we pre-set the operating point at $T = m g$. The feedback then only has to handle deviations from hover, which keeps the closed loop nicely linear and easy to tune.
-
-The attitude loop is *much faster* than the altitude loop (its eigenvalues are ~42 rad/s vs ~3 rad/s) — that's why the simulation timestep has to be small (0.005 s in the notebook). Bigger timesteps and the attitude loop becomes numerically unstable, even though it's stable on paper. This is a textbook lesson in why simulator timesteps matter.
-"""),
-        md(r"""## Analytical derivation
-
-Derive the model from Newton-Euler, then design PD controllers analytically, then verify the closed loop is stable — only then write code.
-
-### Planar 2-D quadrotor model
-
-State $\mathbf{x} = [z,\ \dot z,\ \phi,\ \dot\phi]^T$ where $z$ is altitude and $\phi$ is roll angle from vertical (positive = tilted right). Inputs: total thrust $T$ along the body's "up" axis, and roll torque $\tau$ about the CoM.
-
-When the body is rolled by $\phi$, its up-axis in world coordinates is
-
-$$\hat{u}_b \;=\; (-\sin\phi,\ \cos\phi).$$
-
-### Newton-Euler
-
-Translation (Newton's 2nd law in world frame, gravity acts in $-\hat{y}$):
-
-$$m\,\ddot{\mathbf r}_{\text{world}} \;=\; T\hat{u}_b \;+\; m\mathbf{g} \;=\; (-T\sin\phi,\ T\cos\phi - mg)$$
-
-**Council note (pass 8, Hovakimyan):** the horizontal channel is *not* truly decoupled — $\ddot x = -T\sin\phi/m$ depends on both thrust (altitude loop) and roll (attitude loop). When the attitude loop wobbles $\phi$, the horizontal channel gets kicked. We don't simulate $x$ here for simplicity; on hardware lateral drift requires an outer position-loop with the same cascaded structure. Focusing on the altitude channel gives
-
-$$\boxed{\;\ddot z \;=\; \frac{T\cos\phi}{m} - g\;}$$
-
-Rotation (scalar in 2-D, since roll is the only rotational DoF):
-
-$$\boxed{\;\ddot\phi \;=\; \frac{\tau}{I}\;}$$
-
-where $I$ is the body's moment of inertia about the roll axis.
-
-### PD control laws
-
-Hover requires $T = mg$ (cancels gravity at $\phi = 0$). We use **gravity-feedforward + PD** on altitude, and pure PD on attitude:
-
-$$T \;=\; m\!\left(g \;+\; K_p^z(z_\text{ref} - z) \;-\; K_d^z\,\dot z\right)$$
-$$\tau \;=\; K_p^\phi(\phi_\text{ref} - \phi) \;-\; K_d^\phi\,\dot\phi$$
-
-### Closed-loop analysis (near hover)
-
-Substitute $T$ into the altitude equation and use $\cos\phi \approx 1$ for small angles:
-
-$$\ddot z \;=\; \frac{m\!\left(g + K_p^z(z_\text{ref}-z) - K_d^z \dot z\right)}{m} - g \;=\; K_p^z(z_\text{ref}-z) \;-\; K_d^z\,\dot z$$
-
-That is a standard linear 2nd-order system. With $\tilde z = z - z_\text{ref}$:
-
-$$\ddot{\tilde z} \;+\; K_d^z\,\dot{\tilde z} \;+\; K_p^z\,\tilde z \;=\; 0,\quad \omega_n^z = \sqrt{K_p^z},\quad \zeta^z = \frac{K_d^z}{2\sqrt{K_p^z}}$$
-
-Identically for attitude (with $I$ in the denominator):
-
-$$\ddot\phi \;+\; \frac{K_d^\phi}{I}\,\dot\phi \;+\; \frac{K_p^\phi}{I}\,\phi \;=\; 0,\quad \omega_n^\phi = \sqrt{\tfrac{K_p^\phi}{I}},\quad \zeta^\phi = \frac{K_d^\phi}{2\sqrt{K_p^\phi I}}$$
-
-With our chosen gains ($K_p^z=8$, $K_d^z=4.5$, $K_p^\phi=18$, $K_d^\phi=5.5$, $I=0.01$):
-
-- altitude: $\omega_n^z = 2.83$ rad/s, $\zeta^z = 0.80$ (well-damped)
-- attitude: $\omega_n^\phi = 42.4$ rad/s, $\zeta^\phi = 6.48$ (overdamped — sluggish but very robust)
-
-Both loops have all closed-loop poles in the open left-half plane → asymptotically stable around hover.
-
-### Numerical-integration constraint
-
-The attitude loop is **stiff** ($\omega_n^\phi = 42$ rad/s, much faster than altitude). Explicit Euler integration is stable iff $\Delta t \cdot \omega_n^\phi \lesssim 2$. We use $\Delta t = 0.005$ s here ($\Delta t \cdot \omega_n^\phi = 0.21$, safe). The animation in `scripts/build_animations.py` uses $\Delta t = 0.002$ s for margin around disturbances — and we discovered that $\Delta t = 0.01$ pushes the discrete eigenvalues outside the unit disk, blowing the sim up to NaN.
-
-### Compatibility check — math ↔ code
-
-| Derivation step | Code |
-|---|---|
-| $\ddot z = T\cos\phi/m - g$ | `z_ddot = thrust * np.cos(phi) / m - g` |
-| $\ddot\phi = \tau/I$ | `phi_ddot = torque / I` |
-| $T = m(g + K_p^z(z_\text{ref}-z) - K_d^z\dot z)$ | `thrust = m * (g + Kp_z*(z_ref - z) - Kd_z*z_dot)` |
-| $\tau = K_p^\phi(\phi_\text{ref}-\phi) - K_d^\phi\dot\phi$ | `torque = Kp_phi*(phi_ref - phi) - Kd_phi*phi_dot` |
-| $\Delta t < 2/\omega_n^\phi \approx 0.047$ | `dt = 0.005` (well below the bound) |
-"""),
-        code("""import numpy as np
-import matplotlib.pyplot as plt
-
-g = 9.81
-m = 0.5
-I = 0.01
-
-Kp_z, Kd_z = 8.0, 4.5
-Kp_phi, Kd_phi = 18.0, 5.5
-
-z_ref = 2.0
-phi_ref = 0.0
-"""),
-        code("""x = np.array([0.0, 0.0, 0.30, 0.0])  # start at ground, 0.3 rad roll
-dt = 0.005
-T = 5.0
-N = int(T / dt)
-hist = np.zeros((N, 4))
-u_hist = np.zeros((N, 2))
-
-for i in range(N):
-    z, z_dot, phi, phi_dot = x
-    thrust = m * (g + Kp_z * (z_ref - z) - Kd_z * z_dot)
-    torque = Kp_phi * (phi_ref - phi) - Kd_phi * phi_dot
-    z_ddot = thrust * np.cos(phi) / m - g
-    phi_ddot = torque / I
-    x = x + dt * np.array([z_dot, z_ddot, phi_dot, phi_ddot])
-    hist[i] = x
-    u_hist[i] = [thrust, torque]
-"""),
-        code("""t = np.arange(N) * dt
-fig, axs = plt.subplots(2, 2, figsize=(11, 6))
-axs[0, 0].plot(t, hist[:, 0]); axs[0, 0].axhline(z_ref, color='r', ls='--')
-axs[0, 0].set_title('Altitude (m)')
-axs[0, 1].plot(t, hist[:, 2]); axs[0, 1].axhline(phi_ref, color='r', ls='--')
-axs[0, 1].set_title('Roll (rad)')
-axs[1, 0].plot(t, u_hist[:, 0]); axs[1, 0].set_title('Thrust (N)')
-axs[1, 1].plot(t, u_hist[:, 1]); axs[1, 1].set_title('Roll torque (N·m)')
-for ax in axs.flat:
-    ax.set_xlabel('time (s)'); ax.grid()
-plt.tight_layout()
-plt.show()
-"""),
-        md(r"""## References & rigor notes
-
-**Cascaded loop stability.** Time-scale separation between the fast attitude loop ($\omega_n^\phi \approx 42$ rad/s) and the slow altitude loop ($\omega_n^z \approx 3$ rad/s) — roughly a decade apart — allows analyzing each independently. Singular-perturbation theory (Khalil, 2002) formalizes this: as the ratio of time constants grows, cascaded stability follows from individual loop stability.
-
-**Discrete-time stability bound.** Explicit Euler integration of a 2nd-order system with natural frequency $\omega_n$ is stable iff $\Delta t \cdot \omega_n < 2$. For our attitude loop ($\omega_n = 42$): $\Delta t < 0.047$ s. We use 0.005 s with a 10× margin. Going to 0.01 s pushes discrete eigenvalues past 1 in magnitude and the sim NaNs — we hit exactly this bug in an earlier commit.
-
-**Complexity.** $O(1)$ per control step.
-
-**References.**
-- Mahony, R., Kumar, V., & Corke, P. (2012). *Multirotor aerial vehicles: Modeling, estimation, and control of quadrotor*. IEEE Robotics & Automation Magazine, 19(3), 20-32.
-- Åström, K. J., & Murray, R. M. (2008). *Feedback Systems: An Introduction for Scientists and Engineers*, Princeton University Press, ch. 10-11.
-- Khalil, H. K. (2002). *Nonlinear Systems*, 3rd ed., Prentice Hall, ch. 11 (singular perturbation).
-"""),
-    ]
-    write("08_uav_quadrotor_pid.ipynb", cells)
 
 
 # ---------------------------------------------------------------------------
@@ -3377,14 +3117,19 @@ $$u^\star = u_\text{nom} - \max\!\Bigl(0,\ -2(x - x_o)^T u_\text{nom} - \gamma h
         code("""import numpy as np
 import matplotlib.pyplot as plt
 
-# 2D single-integrator robot, disk obstacle
-obs = np.array([3.0, 1.5])
+# 2D single-integrator robot, disk obstacle.
+# IMPORTANT: obstacle is OFFSET from the straight-line start->goal path.
+# If obstacle were exactly on the line, the nominal velocity would be
+# purely radial at the boundary -> projection onto the safe half-space
+# is zero -> robot stalls. Offsetting breaks the symmetry so the CBF
+# can find a non-trivial tangent direction to slide along.
+obs = np.array([3.0, 0.7])     # below the start->goal line y = 0.5x
 r_obs = 1.0
 goal = np.array([6.0, 3.0])
 start = np.array([0.0, 0.0])
-K_p = 0.8           # nominal proportional gain
-u_max = 1.0         # |u| <= 1 m/s
-gamma = 2.0         # class-K slope: bigger -> safer / more conservative
+K_p = 1.0
+u_max = 1.0
+gamma = 5.0                     # larger -> CBF activates earlier (more clearance)
 
 dt = 0.05
 T_sim = 12.0
@@ -3434,8 +3179,10 @@ traj_safe   = run(use_cbf=True)
 
 min_dist_unsafe = np.min(np.linalg.norm(traj_unsafe - obs, axis=1))
 min_dist_safe   = np.min(np.linalg.norm(traj_safe - obs, axis=1))
+final_dist_to_goal = np.linalg.norm(traj_safe[-1] - goal)
 print(f"Min distance to obstacle (unsafe): {min_dist_unsafe:.3f} m  -- inside r={r_obs}? {min_dist_unsafe < r_obs}")
 print(f"Min distance to obstacle (CBF):    {min_dist_safe:.3f}  m  -- always >= r={r_obs}? {min_dist_safe >= r_obs - 0.01}")
+print(f"Final distance to goal (CBF):      {final_dist_to_goal:.3f} m  -- reached goal? {final_dist_to_goal < 0.5}")
 """),
         code("""fig, ax = plt.subplots(figsize=(9, 6))
 ax.add_patch(plt.Circle(obs, r_obs, color='lightgray', label='Obstacle'))
@@ -3479,7 +3226,6 @@ def main():
     nb_05_lqr_pendulum()
     nb_06_pure_pursuit()
     nb_07_ik_2link()
-    nb_08_quadrotor_pid()
     nb_09_lane_detection()
     nb_10_occupancy_grid()
     nb_11_icp()

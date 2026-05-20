@@ -2,7 +2,7 @@
 
 First-party Python implementations of classical robotics algorithms, organized to mirror the [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) sections.
 
-Each notebook is **self-contained**: math explanation + runnable code + at least one visualization. No external data needed — synthetic inputs are generated inline. All 20 notebooks are pre-executed so GitHub renders their plots directly.
+Each notebook is **self-contained**: math explanation + runnable code + at least one visualization. No external data needed — synthetic inputs are generated inline. All 21 notebooks are pre-executed so GitHub renders their plots directly.
 
 ## Setup
 
@@ -19,10 +19,9 @@ jupyter notebook
 | 02 | [RRT](02_motion_planning_rrt.ipynb) | Motion Planning | Rapidly-exploring Random Tree with 10% goal bias |
 | 03 | [Extended Kalman Filter](03_localization_ekf.ipynb) | Localization | EKF for unicycle robot with range-bearing landmarks |
 | 04 | [Particle filter](04_localization_particle_filter.ipynb) | Localization | Monte Carlo Localization with systematic resampling |
-| 05 | [LQR triple-link pendulum](05_motion_control_pendulum_lqr.ipynb) | Motion Control | Continuous-time LQR balancing 3 serial links via SymPy-derived dynamics (8-D state, 1 input) |
+| 05 | [Cart-pole swing-up + LQR catch](05_motion_control_pendulum_lqr.ipynb) | Motion Control | Hybrid Astrom-Furuta energy pumping (bang-bang) from hanging, then CARE-based LQR catch in the upright sublevel set |
 | 06 | [Pure pursuit](06_path_tracking_pure_pursuit.ipynb) | Path Tracking | Geometric path tracking for a unicycle |
 | 07 | [2-link analytical IK](07_manipulation_ik_2link.ipynb) | Manipulation | Closed-form inverse kinematics for planar 2R arm |
-| 08 | [Quadrotor PID](08_uav_quadrotor_pid.ipynb) | UAV | Altitude + roll PID for a planar quadrotor |
 | 09 | [Lane detection](09_perception_lane_detection.ipynb) | Automated Driving | Canny + ROI mask + Hough lines on synthetic road |
 | 10 | [Occupancy grid](10_mapping_occupancy_grid.ipynb) | Mapping | Log-odds grid from simulated lidar scans |
 | 11 | [ICP scan matching](11_slam_icp.ipynb) | SLAM | Iterative Closest Point with SVD-based rigid transform |

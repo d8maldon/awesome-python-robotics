@@ -1,6 +1,6 @@
 # Interactive Demos
 
-Four pygame-based interactive demos that let you **drive, fly, plan, and pose** the algorithms from our notebooks. Each runs in a standalone window — no Jupyter required.
+Three pygame-based interactive demos that let you **drive, plan, and pose** the algorithms from our notebooks. Each runs in a standalone window — no Jupyter required.
 
 ## Setup
 
@@ -8,13 +8,12 @@ Four pygame-based interactive demos that let you **drive, fly, plan, and pose** 
 pip install pygame
 ```
 
-(pygame is intentionally left out of the main `requirements.txt` because it's only needed for these demos — the 20 notebooks don't depend on it.)
+(pygame is intentionally left out of the main `requirements.txt` because it's only needed for these demos — the 21 notebooks don't depend on it.)
 
 ## Run any demo
 
 ```bash
 python demos/drive_bicycle.py     # Drive the kinematic bicycle model
-python demos/fly_quadrotor.py     # Fly a planar quadrotor with thrust + roll
 python demos/click_to_plan.py     # Paint obstacles, run A* live
 python demos/move_arm.py          # Mouse-controlled 2-link IK
 ```
@@ -29,17 +28,6 @@ Mirrors [Notebook 19](../notebooks/19_ground_vehicles_bicycle.ipynb). The kinema
 | ↑ / ↓ | accelerate / brake |
 | ← / → | steer |
 | R | reset |
-| Q / Esc | quit |
-
-### `fly_quadrotor.py` — Fly the Quadrotor
-Mirrors [Notebook 08](../notebooks/08_uav_quadrotor_pid.ipynb), but **without** the PID — you are the controller. Gravity pulls down, hover thrust matches your weight, ↑ gives extra lift, ← / → tilt the body. Crash if you slam into the ground too hard.
-
-| Key | Action |
-|---|---|
-| ↑ | extra thrust |
-| ↓ | reduce thrust |
-| ← / → | roll torque |
-| Space | re-arm / reset |
 | Q / Esc | quit |
 
 ### `click_to_plan.py` — Click-to-plan A\*
