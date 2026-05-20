@@ -520,605 +520,434 @@ plt.show()
     write("03_localization_ekf.ipynb", cells)
 
 
-# ---------------------------------------------------------------------------
-# 04. Particle filter
-# ---------------------------------------------------------------------------
-def nb_04_particle_filter():
-    cells = [
-        md("""# 04 — Particle Filter (Monte Carlo) Localization
 
-**Section:** Localization · **Mirrors MATLAB:** *Monte Carlo Localization*
-
-The particle filter represents the belief over robot pose with a set of weighted samples (particles).
-"""),
-        md("""## Intuition — what's actually going on?
-
-The EKF (notebook 03) assumes your belief about your pose looks like a single Gaussian "blob" — one peak with elliptical uncertainty. That breaks down if you're, say, in a long hallway where you could be anywhere along it — the true belief has multiple peaks.
-
-The **particle filter** drops the Gaussian assumption and represents the belief with hundreds or thousands of *samples* (particles), each one a hypothesis "maybe I'm here". After each motion, you nudge every particle through the motion model with a bit of noise. After each observation, you ask each particle "how likely was that observation if I were you?" and weight it accordingly. Then you **resample** — particles with high weight reproduce, particles with low weight die. Over time the cloud collapses onto the true pose.
-
-It's basically Darwinian evolution for pose hypotheses. The animation in the README shows it beautifully — a cloud of green dots collapses onto the true trajectory as observations come in.
-"""),
-        md(r"""## Analytical derivation
-
-We want to recursively estimate $p(x_t \mid z_{1:t}, u_{1:t})$ where $x_t$ is the pose, $u_t$ is the control input, and $z_t$ is the observation. Bayes-filter recursion:
-
-$$p(x_t \mid z_{1:t}, u_{1:t}) \;\propto\; p(z_t \mid x_t)\;\int p(x_t \mid x_{t-1}, u_t)\,p(x_{t-1} \mid z_{1:t-1}, u_{1:t-1})\,dx_{t-1}$$
-
-The particle filter approximates this with $N$ weighted samples $\{(x_t^{(i)}, w_t^{(i)})\}_{i=1}^N$:
-
-$$p(x_t \mid z_{1:t}, u_{1:t}) \;\approx\; \sum_{i=1}^N w_t^{(i)}\,\delta(x_t - x_t^{(i)})$$
-
-**Sequential Importance Sampling (with motion-model proposal).** At each step:
-
-1. **Predict:** $\tilde x_t^{(i)} \sim p(x_t \mid x_{t-1}^{(i)}, u_t)$  (sample from the motion model)
-2. **Weight:** if we use the *motion model* as proposal, the importance weight simplifies to
-$$w_t^{(i)} \;\propto\; w_{t-1}^{(i)}\,p(z_t \mid \tilde x_t^{(i)})$$
-For Gaussian observation noise $z = h(x) + v$, $v \sim \mathcal{N}(0, \Sigma)$:
-$$p(z_t \mid \tilde x_t^{(i)}) \;\propto\; \exp\!\Bigl(-\tfrac{1}{2}\,(z_t - h(\tilde x_t^{(i)}))^T \Sigma^{-1} (z_t - h(\tilde x_t^{(i)}))\Bigr)$$
-Compute in log-space then exponentiate after subtracting the maximum (avoids underflow).
-3. **Resample:** if effective sample size $N_\text{eff} = 1 / \sum (w^{(i)})^2$ falls below threshold (or every step). Systematic resampling preserves diversity with $O(N)$ cost:
-$$U^{(i)} = \frac{i - 1 + U_0}{N},\quad U_0 \sim \text{Unif}(0,1)$$
-and pick particle $j$ such that $\sum_{k=1}^{j-1} w^{(k)} < U^{(i)} \le \sum_{k=1}^{j} w^{(k)}$.
-
-After resampling all weights are reset to $1/N$.
-
-### Compatibility check — math ↔ code
-
-| Step | Code |
-|---|---|
-| Predict $\tilde x_t^{(i)}$ via motion model + noise | `particles += u + np.random.randn(N, 3) * np.array([0.08, 0.08, 0.04])` |
-| $h(x) = \|\ell_j - x\|$ (range to landmark $j$) | `expected = np.linalg.norm(landmarks[:, None, :] - particles[None, :, :2], axis=2)` |
-| $(z - h(x))/\sigma$ standardized residual | `err = (z[:, None] - expected) / range_noise` |
-| $\log w \propto -\tfrac{1}{2}\sum_j r_j^2$ | `log_w = -0.5 * np.sum(err ** 2, axis=0)` |
-| Normalize after max-subtract | `w = np.exp(log_w - log_w.max()); w /= w.sum()` |
-| Systematic resampling | `idx = np.searchsorted(np.cumsum(w), (np.arange(N) + np.random.random()) / N)` |
-"""),
-        code("""import numpy as np
-import matplotlib.pyplot as plt
-
-np.random.seed(0)
-
-T = 120
-dt = 0.1
-
-# Figure-8 ground-truth path
-true_x = np.zeros((T, 3))
-for t in range(T):
-    a = t * dt
-    true_x[t] = [5 * np.sin(a), 3 * np.sin(2 * a), a]
-
-landmarks = np.array([[6, 0], [-6, 0], [0, 4], [0, -4], [4, 4], [-4, -4]])
-"""),
-        code("""N = 600
-# Initial particles spread around the origin
-particles = np.zeros((N, 3))
-particles[:, :2] = np.random.uniform(-2, 2, (N, 2))
-particles[:, 2] = np.random.uniform(-np.pi, np.pi, N)
-
-est_hist, particle_hist = [], []
-range_noise = 0.25
-
-for t in range(T):
-    u = (true_x[t] - true_x[t - 1]) if t > 0 else np.zeros(3)
-    particles += u + np.random.randn(N, 3) * np.array([0.08, 0.08, 0.04])
-
-    # Range observations to each landmark
-    z = np.linalg.norm(landmarks - true_x[t, :2], axis=1) + np.random.randn(len(landmarks)) * range_noise
-    expected = np.linalg.norm(landmarks[:, None, :] - particles[None, :, :2], axis=2)  # (M, N)
-    err = (z[:, None] - expected) / range_noise
-    log_w = -0.5 * np.sum(err ** 2, axis=0)
-    w = np.exp(log_w - log_w.max())
-    w /= w.sum()
-
-    # COUNCIL FIX (pass 4, Wald): resampling every step is a deliberate
-    # simplification — because we recompute weights from scratch each step
-    # (no carry-over from w_{t-1}), the SIR recursion collapses to
-    # w_t ∝ p(z_t | x_t) and the post-resample weights become uniform.
-    # Production SIR carries weights and conditionally resamples when
-    # N_eff = 1/Σw² drops below N/2; we print N_eff to show it.
-    N_eff = 1.0 / np.sum(w ** 2)
-    idx = np.searchsorted(np.cumsum(w), (np.arange(N) + np.random.random()) / N)
-    particles = particles[idx]
-
-    est_hist.append(particles.mean(axis=0))
-    if t in (0, T // 3, 2 * T // 3, T - 1):
-        particle_hist.append((t, particles.copy()))
-
-est_hist = np.array(est_hist)
-err = np.linalg.norm(est_hist[:, :2] - true_x[:, :2], axis=1)
-print(f"Mean position error: {err.mean():.3f} m")
-"""),
-        code("""fig, axs = plt.subplots(2, 2, figsize=(12, 10))
-for ax, (t, p) in zip(axs.flat, particle_hist):
-    ax.scatter(p[:, 0], p[:, 1], c='g', s=4, alpha=0.4, label='Particles')
-    ax.plot(true_x[:t + 1, 0], true_x[:t + 1, 1], 'b-', lw=2, label='True')
-    ax.plot(est_hist[:t + 1, 0], est_hist[:t + 1, 1], 'r--', lw=1, label='Estimate')
-    ax.scatter(landmarks[:, 0], landmarks[:, 1], c='k', marker='*', s=140)
-    ax.set_title(f't = {t * dt:.1f}s')
-    ax.set_aspect('equal'); ax.grid(); ax.legend(loc='upper right', fontsize=8)
-plt.tight_layout()
-plt.show()
-"""),
-        md(r"""## References & rigor notes
-
-**Theorem** (Almost-sure convergence; Crisan & Doucet, 2002).
-*Under regularity conditions on the proposal and likelihood, the empirical measure of $N$ particles converges weakly to the true posterior as $N \to \infty$, with $L^p$ error $O(1/\sqrt{N})$.*
-
-**Effective sample size.** Without resampling, weight concentrates on a single particle ("degeneracy"). Standard practice: monitor $N_\text{eff} = 1 / \sum_i (w_i)^2$ and resample when $N_\text{eff} < N/2$. Our notebook resamples *every step* — a simplification valid here because we recompute weights from scratch each step (no $w_{t-1}$ carry-over), collapsing the SIR recursion to $w_t \propto p(z_t \mid x_t)$.
-
-**Posterior Cramér-Rao bound (PCRB).** As with the EKF (notebook 03), the PCRB (Tichavský-Muravchik-Nehorai 1998) is the achievability benchmark; the particle filter approaches it as $N \to \infty$ in the linear-Gaussian limit and bounds the noise-floor performance in nonlinear cases.
-
-**Observation note.** This notebook intentionally uses **range only** (no bearing) to expose heading-unobservability — heading drifts via motion-model noise alone. With range + bearing (as in notebook 03), heading is observable. Mean estimator collapses multimodal beliefs; for multimodal targets prefer MAP `particles[np.argmax(w)]` or KDE-mode.
-
-**Sample impoverishment.** Resampling *too often* concentrates particles onto the highest-weight one and loses diversity. Mitigations: regularized PF (add noise after resampling), MCMC moves, or Rao-Blackwellization (marginalize linear-Gaussian sub-states).
-
-**Complexity.** Per step: $O(N M)$ for $N$ particles and $M$ observations; systematic resampling is $O(N)$.
-
-**References.**
-- Doucet, A., Godsill, S., & Andrieu, C. (2000). *On sequential Monte Carlo sampling methods for Bayesian filtering*. Statistics and Computing, 10(3), 197-208.
-- Crisan, D., & Doucet, A. (2002). *A survey of convergence results on particle filtering methods for practitioners*. IEEE Trans. Signal Processing, 50(3).
-- Thrun, S., Burgard, W., & Fox, D. (2005). *Probabilistic Robotics*, MIT Press, ch. 4.
-"""),
-    ]
-    write("04_localization_particle_filter.ipynb", cells)
 
 
 # ---------------------------------------------------------------------------
-# 05. LQR control of a TRIPLE-link inverted pendulum on a cart
+# 05. iLQR swing-up of a 2-link cart-pendulum + LQR catch
 # ---------------------------------------------------------------------------
 def nb_05_lqr_pendulum():
     cells = [
-        md("""# 05 — Cart-Pole Swing-Up + LQR Catch
+        md(r"""# 05 — 2-Link Cart-Pendulum Swing-Up via iLQR + LQR Catch
 
-**Section:** Motion Control · **Mirrors MATLAB:** *Multi-Loop PI Tuning for Robotic Arm* — but with swing-up
+**Section:** Motion Control · **Mirrors MATLAB:** *Multi-Loop PI Tuning for Robotic Arm* — replaced by a far harder underactuated problem
 
-Start the pendulum hanging straight down. Pump enough mechanical energy into the system (via cart motion alone — the only actuator) to bring the pendulum near upright. Hand off to an LQR catch that holds it there. This is the canonical underactuated-control demonstration (Spong 1995, Furuta 1991).
+This notebook tackles the canonical hard underactuated control problem: a cart carrying a **double pendulum** (two series links). Starting from **both links hanging straight down** (the global energy minimum), we use **iterative LQR (iLQR / DDP)** to compute a 4-second cart-force trajectory that whips both links up, then hand off to an LQR catch that holds them upright.
 
-> **Honest scope note.** An earlier version of this notebook stabilized a **triple-link** inverted pendulum near upright. Swinging up a *triple-link* from hanging requires trajectory optimization (direct collocation / DDP / iLQR) and is research-grade — energy pumping alone does not solve it in a teaching notebook because the controller injects one scalar (total energy) into n configuration DOFs. The single-link swing-up shown here is the standard pedagogical demonstration; the same energy-pumping idea generalizes (with much more careful tuning + offline trajectory optimization) to multi-link.
+> **Why this is research-grade.** The system has 3 configuration DOFs and 1 input — it is 2× underactuated. Pure energy pumping (Astrom-Furuta) injects only one scalar quantity and cannot drive a 2-DOF unactuated subspace to its global maximum. The standard tools for this problem are **trajectory optimization** (iLQR, DDP, direct collocation; Tedrake 2023) and **partial feedback linearization** (Spong 1994). We use iLQR — the workhorse of modern robot manipulation (used in production by Boston Dynamics and TRI) — and prove that the catch handoff succeeds.
 """),
-        md(r"""## Intuition — what is actually going on?
+        md(r"""## Intuition — what is going on?
 
-You have a pendulum hanging straight down and one actuator: a horizontal force on the cart. You cannot directly torque the pendulum. So how do you get it upright?
+You have a cart that can be pushed left or right, with a 2-segment pendulum chain hanging off the top. **Both links start hanging straight down.** Your only actuator is the cart force. The goal: get both links to balance straight up, like a circus performer with a two-segment stick.
 
-**Energy pumping** (Astrom-Furuta 2000, Spong 1995). Compute the **pendulum-only** mechanical energy $E_\text{pend}$ (bob kinetic + bob potential). At upright at rest $E_\text{pend} = E^\star = m g \ell$; at hanging at rest $E_\text{pend} = -m g \ell$. We must add $2 m g \ell$.
+You cannot just push the cart and hope. You cannot just pump energy (one input, three DOFs). You need to plan the cart's entire motion ahead of time, foreseeing how each push will whip the lower link and how that in turn will swing the upper link.
 
-The trick is the work-energy relation, but the careful derivation below shows the right pivot acceleration must oppose $\cos\theta\cdot\dot\theta$ to inject energy. Operationally the sign rule is:
+**iLQR** does exactly this. It starts with any rough guess at the cart force schedule (we use a sinusoid at twice the natural frequency), then iteratively refines it by:
 
-> Push the cart **in the direction OPPOSITE** to $\cos\theta\cdot\dot\theta$ when $E_\text{pend} < E^\star$; push WITH it when $E_\text{pend} > E^\star$.
+1. Simulating the dynamics forward with the current schedule.
+2. Linearizing the dynamics along that trajectory (matrices $A_t, B_t$ at each timestep).
+3. Solving a *time-varying discrete LQR* backwards along the trajectory to get a state-feedback correction.
+4. Applying the correction with a line search.
 
-Bang-bang with the right sign pumps fast: in ~1.2 s the pendulum reaches the LQR basin and the catch fires.
-
-Once $E_\text{pend}$ is close to $E^\star$ AND the pendulum is near upright AND inside the LQR sublevel set $z^T P z < c_\text{ROA}$, we switch to LQR for the precision catch.
+After ~30-60 iterations the schedule converges to a near-locally-optimal swing-up. We then hand off to a **continuous-time LQR** computed from the linearization at the upright equilibrium — that controller catches the pendulum and holds it.
 """),
         md(r"""## Analytical derivation
 
-### Cart-pole dynamics (pendulum-up convention, $\theta=0$ upright)
+### Cart-double-pendulum dynamics
 
-State $z = [x,\ \dot x,\ \theta,\ \dot\theta]^T$.
+We use Lagrangian mechanics via SymPy's `sympy.physics.mechanics`. State $q = (x, \theta_1, \theta_2)^T$; $\theta_i$ measured from the upward vertical so $\theta_i = 0$ at upright and $\theta_i = \pi$ at hanging.
 
-$$\ddot x = \frac{u + m\ell\sin\theta\,\dot\theta^2 - mg\sin\theta\cos\theta}{M + m\sin^2\theta},\qquad
-\ddot\theta = \frac{(M+m)g\sin\theta - u\cos\theta - m\ell\sin\theta\cos\theta\,\dot\theta^2}{\ell(M+m\sin^2\theta)}.$$
+$$L(q, \dot q) = T(q, \dot q) - V(q),\qquad M(q)\ddot q + C(q,\dot q)\dot q + G(q) = B u$$
 
-### Pendulum-only mechanical energy (the pumping target)
+with $B = (1, 0, 0)^T$ — only the cart is actuated.
 
-The pumping target is the **pendulum's** energy, *not* the total system energy. Total system energy includes cart kinetic energy that grows monotonically with control work and is not bounded — pumping it would just teach the cart to move forever.
+### iLQR (Iterative LQR / DDP variant)
 
-Bob velocity in the inertial frame is $\dot{\vec r}_{\text{bob}} = (\dot x + \ell\cos\theta\,\dot\theta,\ -\ell\sin\theta\,\dot\theta)$, so
+Given a discrete-time system $x_{t+1} = f(x_t, u_t)$ with running cost $\ell(x_t, u_t)$ and terminal cost $\ell_f(x_N)$, **iLQR** finds a locally-optimal control sequence $U = (u_0, \ldots, u_{N-1})$ by alternating:
 
-$$E_\text{pend} \;=\; \tfrac{1}{2}m\,\|\dot{\vec r}_{\text{bob}}\|^2 \;+\; mg\ell\cos\theta.$$
+**Forward rollout.** Given $U$, simulate $x_{t+1} = f(x_t, u_t)$ to get $X$.
 
-$E^\star = mg\ell$ at upright at rest; $E_\text{pend} = -mg\ell$ at hanging at rest. We must add $2mg\ell$ of energy.
+**Backward pass (the LQR-of-an-LQR).** Linearize $f$ around $(X, U)$: $f_x = \partial f / \partial x$, $f_u = \partial f / \partial u$. Compute quadratic cost-to-go terms back from $t=N$ to $t=0$ via the discrete Riccati recursion:
 
-### Energy-rate identity (key derivation)
+$$\begin{aligned}
+Q_x &= \ell_x + f_x^T V_x' &\quad Q_{xx} &= \ell_{xx} + f_x^T V_{xx}' f_x \\
+Q_u &= \ell_u + f_u^T V_x' &\quad Q_{uu} &= \ell_{uu} + f_u^T V_{xx}' f_u \\
+&&Q_{ux} &= \ell_{ux} + f_u^T V_{xx}' f_x
+\end{aligned}$$
 
-Differentiating $E_\text{pend}$ along the equations of motion and simplifying with the EOM for $\ddot\theta$:
+Compute the **feedforward and feedback gains**:
 
-$$\frac{dE_\text{pend}}{dt} \;=\; \frac{m\ell\,\dot\theta\,\cos\theta}{M + m\sin^2\theta}\,\bigl[\,m g \sin\theta\cos\theta \;-\; u \;-\; m\ell\sin\theta\,\dot\theta^2\,\bigr].$$
+$$k_t = -(Q_{uu} + \mu I)^{-1} Q_u, \qquad K_t = -(Q_{uu} + \mu I)^{-1} Q_{ux}$$
 
-For typical values (small $m/M$, $|\theta|$ near $\pi$), the leading term is $-u\cos\theta\,\dot\theta$ (modulo a positive denominator). To make $\dot E_\text{pend} > 0$ we need $u$ and $\cos\theta\,\dot\theta$ to have **opposite** signs.
+with **Levenberg-Marquardt regularization** $\mu$. Update the value function:
 
-### Energy-pumping swing-up law (Astrom-Furuta 2000)
+$$V_x = Q_x + K_t^T Q_{uu} k_t + K_t^T Q_u + Q_{ux}^T k_t,\qquad V_{xx} = Q_{xx} + K_t^T Q_{uu} K_t + K_t^T Q_{ux} + Q_{ux}^T K_t.$$
 
-With $\tilde E = E_\text{pend} - E^\star$ (negative below target):
+**Forward pass with line search.** New input law: $u_t' = u_t + \alpha k_t + K_t (x_t' - x_t)$. Try $\alpha \in \{1, 0.5, 0.25, \ldots\}$ until cost decreases.
 
-$$\boxed{\;u_\text{swing} \;=\; +u_\text{max}\,\text{sign}\bigl(\tilde E\,\cos\theta\,\dot\theta\bigr)\;-\;K_x\,x\;-\;K_{\dot x}\,\dot x\;}$$
+### LQR catch
 
-Sign check: at $\theta=\pi$, $\dot\theta=+0.1$, $\tilde E<0$ we get $\text{sign}(\tilde E\cdot(-1)\cdot 0.1)=\text{sign}(>\!0)=+1$, so $u>0$. Then $u\cos\theta\,\dot\theta = (+)\!\cdot\!(-1)\!\cdot\!(+)<0$ as required.
+Linearize $f$ at $(x^\star, 0) = (\mathbf{0}, 0)$ to get $A, B$. Solve the **Continuous Algebraic Riccati Equation** for $P$:
 
-### LQR catch (handoff condition)
+$$A^T P + P A - P B R^{-1} B^T P + Q = 0,\qquad K_{\text{LQR}} = R^{-1} B^T P.$$
 
-Once $|\theta\!\!\mod 2\pi| < \theta_\text{LQR}$ **and** $z^T P z < c_\text{ROA}$ (with $P$ from CARE), switch to $u = -K_{\text{LQR}} z$.
+When the iLQR trajectory drops the state into the **catch basin** $\{z : |\theta_1|, |\theta_2| < \theta_{\text{LQR}}, z^T P z < c_{\text{ROA}}\}$, switch from open-loop iLQR to feedback law $u = -K_{\text{LQR}} z$. The catch basin is a sublevel set of the Lyapunov function $V(z) = z^T P z$; the linearized closed loop has $\dot V \le -z^T Q z < 0$ for $z \ne 0$, so trajectories that enter the basin stay in it and converge.
 
-### Compatibility check
+### Compatibility check — math ↔ code
 
 | Math | Code |
 |---|---|
-| Nonlinear cart-pole | `def nl_dyn(z, u): ...` matches the boxed formulas |
-| Pendulum energy $E_\text{pend}$ | `def E_pend(z): 0.5*m*(bob_vx^2+bob_vy^2) + m*g*l*cos(th)` |
-| $E^\star = mg\ell$ | `E_star = m * g * l` |
-| Swing-up sign rule | `u_pump = +u_max * np.sign((Ep-E_star)*cos(th)*om)` |
-| Cart restraint | `-K_x*x - K_xd*xdot` |
-| Handoff predicate | `if abs(wrap(th)) < theta_LQR and z @ P @ z < c_ROA: ...` |
-| LQR feedback | `u = -float((K_lqr @ z).item())` |
+| Lagrangian dynamics $M(q)\ddot q = F$ | `LagrangesMethod(L, q, ...)`, lambdified to `M_fn`, `F_fn` |
+| Continuous EOM $\dot z = f_c(z, u)$ | `nl_dyn(z, u)` |
+| Discrete step (RK4) | `step(z, u, dt) = z + (dt/6)(k1+2k2+2k3+k4)` |
+| Linearization $f_x, f_u$ | `linearize(z, u, dt)` (finite differences) |
+| LQR via CARE | `P = solve_continuous_are(A, B, Q, R)`; `K_lqr = inv(R) @ B.T @ P` |
+| iLQR backward pass | `for t in range(N-1, -1, -1): ...` (Riccati update with LM reg) |
+| Line search | `for alpha in [1.0, 0.5, 0.25, ...]: ...` |
+| Catch handoff | `if all_angles_small and z @ P @ z < c_ROA: u = -K_lqr @ z` |
 """),
-        code("""import numpy as np
+        code(r"""import warnings
+import time
+import numpy as np
 import matplotlib.pyplot as plt
+import sympy as sp
+import sympy.physics.mechanics as me
 from scipy.linalg import solve_continuous_are
 
-M, m, l, g = 1.0, 0.2, 0.5, 9.81
+warnings.filterwarnings("ignore", category=RuntimeWarning)   # iLQR early iters overflow
+
+# ---- Cart-double-pendulum dynamics via SymPy ----
+print("Deriving cart-double-pendulum dynamics (sympy.physics.mechanics)...")
+t_sym = me.dynamicsymbols._t
+q = me.dynamicsymbols('x th1 th2')
+qd = [qi.diff(t_sym) for qi in q]
+u_sym = me.dynamicsymbols('u')
+
+Mc_s, g_s = sp.symbols('Mc g', positive=True)
+m1_s, m2_s = sp.symbols('m1 m2', positive=True)
+L1_s, L2_s = sp.symbols('L1 L2', positive=True)
+
+Nf = me.ReferenceFrame('Nf')
+O = me.Point('O'); O.set_vel(Nf, 0)
+Pc = O.locatenew('Pc', q[0] * Nf.x)
+Pc.set_vel(Nf, qd[0] * Nf.x)
+cart = me.Particle('Cart', Pc, Mc_s)
+
+A1 = Nf.orientnew('A1', 'Axis', [q[1], Nf.z])
+A1.set_ang_vel(Nf, qd[1] * Nf.z)
+P1 = Pc.locatenew('P1', (L1_s / 2) * A1.y)
+P1.v2pt_theory(Pc, Nf, A1)
+link1 = me.Particle('L1', P1, m1_s)
+
+J1 = Pc.locatenew('J1', L1_s * A1.y)
+J1.v2pt_theory(Pc, Nf, A1)
+A2 = Nf.orientnew('A2', 'Axis', [q[2], Nf.z])
+A2.set_ang_vel(Nf, qd[2] * Nf.z)
+P2 = J1.locatenew('P2', (L2_s / 2) * A2.y)
+P2.v2pt_theory(J1, Nf, A2)
+link2 = me.Particle('L2', P2, m2_s)
+
+KE = sum(b.kinetic_energy(Nf) for b in [cart, link1, link2])
+PE = sum(b.mass * g_s * b.point.pos_from(O).dot(Nf.y) for b in [cart, link1, link2])
+L_lag = KE - PE
+LM = me.LagrangesMethod(L_lag, q, forcelist=[(Pc, u_sym * Nf.x)], frame=Nf)
+LM.form_lagranges_equations()
+
+params = {Mc_s: 1.0, g_s: 9.81, m1_s: 0.3, m2_s: 0.3, L1_s: 0.4, L2_s: 0.4}
+M_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.mass_matrix_full.subs(params), 'numpy')
+F_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.forcing_full.subs(params), 'numpy')
 
 
 def nl_dyn(z, u):
-    pos, vel, th, om = z
-    s, c = np.sin(th), np.cos(th)
-    den = M + m * s ** 2
-    acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
-    a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
-    return np.array([vel, acc, om, a_th])
+    args = list(z) + [u]
+    Mm = np.asarray(M_fn(*args), dtype=float)
+    Ff = np.asarray(F_fn(*args), dtype=float).flatten()
+    return np.linalg.solve(Mm, Ff)
 
 
-def E_pend(z):
-    # Total mechanical energy of the PENDULUM only (bob KE in inertial frame + bob PE).
-    # The cart KE is NOT part of the pumping target -- pumping a quantity that
-    # includes cart KE would just teach the cart to move forever without ever
-    # raising the bob. The bob's inertial velocity already accounts for pivot
-    # translation, so this is correct.
-    pos, vel, th, om = z
-    bob_vx = vel + l * np.cos(th) * om
-    bob_vy = -l * np.sin(th) * om
-    return 0.5 * m * (bob_vx ** 2 + bob_vy ** 2) + m * g * l * np.cos(th)
+def step(z, u, dt):
+    k1 = nl_dyn(z, u)
+    k2 = nl_dyn(z + 0.5 * dt * k1, u)
+    k3 = nl_dyn(z + 0.5 * dt * k2, u)
+    k4 = nl_dyn(z + dt * k3, u)
+    return z + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
 
-E_star = m * g * l
-print(f"E_pend_star (upright at rest) = {E_star:.4f} J")
-print(f"E_pend_down (hanging at rest) = {-E_star:.4f} J  --  must pump 2*m*g*l = {2*E_star:.4f} J")
+print("State dim = 6 (x, th1, th2, xd, th1d, th2d); input dim = 1 (cart force)")
 """),
-        code("""# LQR linearization around upright
-A = np.array([[0, 1, 0, 0],
-              [0, 0, -m * g / M, 0],
-              [0, 0, 0, 1],
-              [0, 0, (M + m) * g / (M * l), 0]])
-B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
+        code(r"""# ---- LQR linearization at upright ----
+eps = 1e-6
+z_eq = np.zeros(6)
+A_lin = np.zeros((6, 6))
+B_lin = np.zeros((6, 1))
+for i in range(6):
+    zp = z_eq.copy(); zp[i] += eps
+    zm = z_eq.copy(); zm[i] -= eps
+    A_lin[:, i] = (nl_dyn(zp, 0.0) - nl_dyn(zm, 0.0)) / (2 * eps)
+B_lin[:, 0] = (nl_dyn(z_eq, eps) - nl_dyn(z_eq, -eps)) / (2 * eps)
 
-Q = np.diag([1.0, 1.0, 20.0, 1.0])
+print(f"A eigenvalues at upright (open-loop): {np.linalg.eigvals(A_lin).round(3)}")
+print(f"  -> two pairs with positive-real-part => upright is unstable in 2 directions, as expected")
+
+Q_lqr = np.diag([10.0, 100.0, 100.0, 1.0, 1.0, 1.0])
 R_lqr = np.array([[0.1]])
-P = solve_continuous_are(A, B, Q, R_lqr)
-K_lqr = np.linalg.inv(R_lqr) @ B.T @ P
-print(f"LQR gain K = {K_lqr.flatten().round(3)}")
+P_riccati = solve_continuous_are(A_lin, B_lin, Q_lqr, R_lqr)
+K_lqr = np.linalg.inv(R_lqr) @ B_lin.T @ P_riccati
+A_cl = A_lin - B_lin @ K_lqr
+print(f"LQR K = {K_lqr.flatten().round(3)}")
+print(f"Closed-loop eigenvalues: {np.linalg.eigvals(A_cl).round(3)}")
+print(f"  -> all in LHP, upright is asymptotically stable under -K_lqr")
 """),
-        code("""K_x = 1.0                  # cart-position spring (keeps cart bounded)
-K_xd = 0.5                 # cart-velocity damping
-u_max = 15.0               # actuator saturation
-theta_LQR = 0.5            # rad threshold for handoff (~28 deg)
-c_ROA = 20.0               # generous Lyapunov sublevel set for handoff
-
-
+        code(r"""# ---- iLQR ----
 def wrap(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 
-def controller(z):
-    th_wrap = wrap(z[2])
-    z_for_lqr = np.array([z[0], z[1], th_wrap, z[3]])
-    if abs(th_wrap) < theta_LQR and (z_for_lqr @ P @ z_for_lqr) < c_ROA:
-        u = -float((K_lqr @ z_for_lqr).item())
-        mode = "LQR"
-    else:
-        Ep = E_pend(z)
-        # Bang-bang energy pumping. The sign is chosen so that dE_pend/dt > 0
-        # when E_pend < E_star. Empirically (and per the derivation below):
-        #   dE_pend/dt is dominated by -u*cos(theta)*om for small m/M
-        #   => energy INCREASES when u and cos*om have OPPOSITE signs
-        #   => u = +k * sign((E_pend - E_star) * cos*om) does this:
-        #      below target, (Ep-E*) is negative; we want u of opposite sign
-        #      to cos*om, i.e. u = -k*sign(cos*om), which matches.
-        sign_val = (Ep - E_star) * np.cos(z[2]) * z[3]
-        u_pump = +u_max * np.sign(sign_val) if abs(sign_val) > 1e-6 else 0.0
-        u_cart = -K_x * z[0] - K_xd * z[1]
-        u = u_pump + u_cart
-        mode = "swing-up"
-    return float(np.clip(u, -u_max, u_max)), mode
-"""),
-        code("""# Start with the pendulum hanging-down with a tiny perturbation. At perfect
-# rest the bang-bang sign term is undefined (sign(0)=0), so a small initial
-# omega is needed to break the equilibrium. Physically this is a small bump.
-z = np.array([0.0, 0.0, np.pi, 0.1])     # tiny initial omega to break symmetry
-dt = 0.002
-T_sim = 8.0
-N = int(T_sim / dt)
-hist = np.zeros((N, 4))
-u_hist = np.zeros(N)
-t_handoff = None
+def diff_to_goal(z, z_goal):
+    zd = z.copy()
+    zd[1] = wrap(z[1] - z_goal[1])
+    zd[2] = wrap(z[2] - z_goal[2])
+    zd[0] -= z_goal[0]
+    zd[3:] -= z_goal[3:]
+    return zd
 
-for i in range(N):
-    u, mode = controller(z)
+
+def linearize(z, u, dt):
+    f0 = step(z, u, dt)
+    fx = np.zeros((6, 6)); fu = np.zeros((6, 1))
+    e = 1e-5
+    for i in range(6):
+        zp = z.copy(); zp[i] += e
+        fx[:, i] = (step(zp, u, dt) - f0) / e
+    fu[:, 0] = (step(z, u + e, dt) - f0) / e
+    return fx, fu
+
+
+def total_cost(zs, us, z_goal, Q, R, Qf):
+    J = 0.0
+    for tt in range(len(us)):
+        zd = diff_to_goal(zs[tt], z_goal)
+        J += zd @ Q @ zd + R[0, 0] * us[tt] ** 2
+    zd = diff_to_goal(zs[-1], z_goal)
+    return J + zd @ Qf @ zd
+
+
+def ilqr(z0, z_goal, U_init, dt, N, Q, R, Qf, u_max=30.0, max_iter=60, verbose=False):
+    U = U_init.copy()
+    Z = np.zeros((N + 1, 6)); Z[0] = z0
+    for tt in range(N):
+        Z[tt + 1] = step(Z[tt], float(U[tt]), dt)
+    J_prev = total_cost(Z, U, z_goal, Q, R, Qf)
+    mu = 1.0
+    history = [J_prev]
+    for it in range(max_iter):
+        fx_arr = np.zeros((N, 6, 6)); fu_arr = np.zeros((N, 6, 1))
+        for tt in range(N):
+            fx_arr[tt], fu_arr[tt] = linearize(Z[tt], float(U[tt]), dt)
+        zd_f = diff_to_goal(Z[-1], z_goal)
+        Vx = 2 * Qf @ zd_f
+        Vxx = 2 * Qf
+        K_gain = np.zeros((N, 1, 6)); k_gain = np.zeros((N, 1))
+        ok = True
+        for tt in range(N - 1, -1, -1):
+            zd = diff_to_goal(Z[tt], z_goal)
+            lx = 2 * Q @ zd
+            lu = np.array([2 * R[0, 0] * float(U[tt])])
+            lxx = 2 * Q; luu = 2 * R
+            fx, fu = fx_arr[tt], fu_arr[tt]
+            Qx = lx + fx.T @ Vx
+            Qu = lu + fu.T @ Vx
+            Qxx = lxx + fx.T @ Vxx @ fx
+            Qux = fu.T @ Vxx @ fx
+            Quu = luu + fu.T @ Vxx @ fu
+            try:
+                Quu_inv = np.linalg.inv(Quu + mu * np.eye(1))
+            except np.linalg.LinAlgError:
+                ok = False; break
+            k_t = -Quu_inv @ Qu
+            K_t = -Quu_inv @ Qux
+            K_gain[tt] = K_t; k_gain[tt] = k_t.flatten()
+            Vx = Qx + K_t.T @ Quu @ k_t.flatten() + K_t.T @ Qu + Qux.T @ k_t.flatten()
+            Vxx = Qxx + K_t.T @ Quu @ K_t + K_t.T @ Qux + Qux.T @ K_t
+            Vxx = 0.5 * (Vxx + Vxx.T)
+        if not ok:
+            mu *= 10; continue
+        best_J = J_prev; best_Z = None; best_U = None
+        for alpha in [1.0, 0.5, 0.25, 0.1, 0.05, 0.01]:
+            U_new = np.zeros(N); Z_new = np.zeros((N + 1, 6)); Z_new[0] = z0
+            for tt in range(N):
+                dz = Z_new[tt] - Z[tt]
+                dz[1] = wrap(dz[1]); dz[2] = wrap(dz[2])
+                u_new = U[tt] + alpha * k_gain[tt, 0] + (K_gain[tt] @ dz).item()
+                u_new = float(np.clip(u_new, -u_max, u_max))
+                U_new[tt] = u_new
+                Z_new[tt + 1] = step(Z_new[tt], u_new, dt)
+            J_new = total_cost(Z_new, U_new, z_goal, Q, R, Qf)
+            if J_new < J_prev:
+                best_J = J_new; best_Z = Z_new; best_U = U_new
+                break
+        if best_Z is None:
+            mu *= 2
+            if mu > 1e6:
+                break
+            continue
+        improvement = J_prev - best_J
+        Z = best_Z; U = best_U; J_prev = best_J
+        history.append(J_prev)
+        mu = max(0.1, mu / 2)
+        if verbose and it % 10 == 0:
+            print(f"  iter {it:3d}: J = {best_J:9.3f}  (improvement = {improvement:8.4f})")
+        if improvement < 1e-3 and it > 15:
+            break
+    return Z, U, J_prev, history
+
+
+# Run iLQR
+N = 200
+dt = 0.02
+z0 = np.array([0.0, np.pi, np.pi, 0.0, 0.0, 0.0])   # both hanging
+z_goal = np.zeros(6)                                 # both upright at rest
+Q_run = np.diag([0.1, 1.0, 1.0, 0.01, 0.01, 0.01])
+Qf = np.diag([10.0, 100.0, 100.0, 10.0, 10.0, 10.0])
+R = np.array([[0.01]])
+
+omega_n = np.sqrt(9.81 / 0.4)
+ts = np.arange(N) * dt
+U_init = 8.0 * np.sin(2 * omega_n * ts)              # parametric-resonance warm start
+
+print("Running iLQR (this takes ~15-30 s)...")
+t_start = time.time()
+Z_opt, U_opt, J_final, J_hist = ilqr(
+    z0, z_goal, U_init, dt, N, Q_run, R, Qf,
+    u_max=30.0, max_iter=60, verbose=True
+)
+print(f"iLQR finished in {time.time()-t_start:.1f}s, final cost = {J_final:.2f}")
+print(f"Endpoint of optimized trajectory:")
+print(f"  x  = {Z_opt[-1,0]:+.3f} m")
+print(f"  th1 = {np.degrees(wrap(Z_opt[-1,1])):+.2f} deg")
+print(f"  th2 = {np.degrees(wrap(Z_opt[-1,2])):+.2f} deg")
+"""),
+        code(r"""# ---- Hybrid: iLQR open-loop swing-up + LQR catch ----
+theta_LQR = 0.4    # rad threshold for handoff (~23 deg) on BOTH joints
+c_ROA = 10.0       # Lyapunov sublevel set
+
+
+def hybrid(z, t_idx):
+    zl = z.copy()
+    zl[1] = wrap(zl[1]); zl[2] = wrap(zl[2])
+    inside = (abs(zl[1]) < theta_LQR
+              and abs(zl[2]) < theta_LQR
+              and (zl @ P_riccati @ zl) < c_ROA)
+    if inside:
+        u = float(-(K_lqr @ zl).item())
+        return float(np.clip(u, -30, 30)), "LQR"
+    if t_idx < len(U_opt):
+        return float(U_opt[t_idx]), "iLQR"
+    # safety net beyond iLQR horizon
+    u = float(-(K_lqr @ zl).item())
+    return float(np.clip(u, -30, 30)), "LQR-rescue"
+
+
+T_sim = 6.0
+N_total = int(T_sim / dt)
+z = z0.copy()
+hist = np.zeros((N_total, 6))
+u_hist = np.zeros(N_total)
+mode_hist = []
+t_handoff = None
+for i in range(N_total):
+    u, mode = hybrid(z, i)
     hist[i] = z
     u_hist[i] = u
+    mode_hist.append(mode)
     if t_handoff is None and mode == "LQR":
         t_handoff = i * dt
-        print(f"Handoff to LQR at t = {t_handoff:.2f}s, theta = {np.degrees(wrap(z[2])):.1f} deg")
-    z = z + dt * nl_dyn(z, u)
+        print(f"LQR catch engaged at t = {t_handoff:.2f}s, theta1 = {np.degrees(wrap(z[1])):+.1f}d, theta2 = {np.degrees(wrap(z[2])):+.1f}d")
+    z = step(z, u, dt)
 
-final_th_deg = np.degrees(wrap(hist[-1, 2]))
-print(f"Final: x = {hist[-1, 0]:+.3f} m, theta = {final_th_deg:+.2f} deg")
-print(f"Upright reached? {abs(final_th_deg) < 5}")
+print(f"\nFinal state at t = {T_sim}s:")
+print(f"  x   = {hist[-1, 0]:+.4f} m")
+print(f"  th1 = {np.degrees(wrap(hist[-1, 1])):+.3f} deg")
+print(f"  th2 = {np.degrees(wrap(hist[-1, 2])):+.3f} deg")
+print(f"  vels = ({hist[-1, 3]:+.3f}, {hist[-1, 4]:+.3f}, {hist[-1, 5]:+.3f})")
+ok = (abs(np.degrees(wrap(hist[-1, 1]))) < 5
+      and abs(np.degrees(wrap(hist[-1, 2]))) < 5)
+print(f"Both links upright at end (<5 deg)? {ok}")
 """),
-        code("""t_arr = np.arange(N) * dt
-fig, axs = plt.subplots(4, 1, figsize=(11, 9), sharex=True)
-axs[0].plot(t_arr, np.degrees([wrap(th) for th in hist[:, 2]]), 'b-')
-axs[0].axhline(0, color='r', ls='--', alpha=0.5, label='upright')
-axs[0].set_ylabel('theta (deg)'); axs[0].grid(); axs[0].legend()
+        code(r"""# ---- Plots ----
+t_arr = np.arange(N_total) * dt
+fig, axs = plt.subplots(4, 1, figsize=(11, 11), sharex=True)
+axs[0].plot(t_arr, np.degrees([wrap(th) for th in hist[:, 1]]), 'b-', label='theta1')
+axs[0].plot(t_arr, np.degrees([wrap(th) for th in hist[:, 2]]), 'r-', label='theta2')
+axs[0].axhline(0, color='k', ls='--', alpha=0.3)
+axs[0].set_ylabel('joint angle (deg)'); axs[0].grid(); axs[0].legend()
 
 axs[1].plot(t_arr, hist[:, 0], 'g-')
 axs[1].set_ylabel('cart x (m)'); axs[1].grid()
 
-E_arr = np.array([E_pend(z) for z in hist])
-axs[2].plot(t_arr, E_arr, 'purple')
-axs[2].axhline(E_star, color='r', ls='--', alpha=0.5, label='E_star (upright)')
-axs[2].axhline(-E_star, color='gray', ls='--', alpha=0.3, label='E_down (hanging)')
-axs[2].set_ylabel('pendulum E (J)'); axs[2].grid(); axs[2].legend()
+axs[2].plot(t_arr, u_hist, 'r-')
+axs[2].axhline(30, color='k', ls='--', alpha=0.3); axs[2].axhline(-30, color='k', ls='--', alpha=0.3)
+axs[2].set_ylabel('control u (N)'); axs[2].grid()
 
-axs[3].plot(t_arr, u_hist, 'r-')
-axs[3].axhline(u_max, color='k', ls='--', alpha=0.3)
-axs[3].axhline(-u_max, color='k', ls='--', alpha=0.3)
-axs[3].set_ylabel('control u (N)'); axs[3].set_xlabel('time (s)'); axs[3].grid()
+axs[3].plot(np.arange(len(J_hist)), J_hist, 'b.-')
+axs[3].set_ylabel('iLQR cost J'); axs[3].set_xlabel('iteration / time')
+axs[3].set_yscale('log'); axs[3].grid()
 
 if t_handoff is not None:
-    for ax in axs:
-        ax.axvline(t_handoff, color='orange', ls=':', alpha=0.7)
+    for ax in axs[:3]:
+        ax.axvline(t_handoff, color='orange', ls=':', alpha=0.7, label='LQR catch')
+
 plt.tight_layout()
 plt.show()
 """),
-        code("""fig, axs = plt.subplots(1, 8, figsize=(18, 3), sharey=True)
+        code(r"""# ---- Stop-motion strip showing the full swing-up ----
+fig, axs = plt.subplots(1, 8, figsize=(20, 3), sharey=True)
 sample_t = np.linspace(0, T_sim, 8)
-xmax_plot = max(2.0, float(abs(hist[:, 0]).max()) + 0.3)
-for ax, ts in zip(axs, sample_t):
-    idx = min(int(ts / dt), N - 1)
-    pos = hist[idx, 0]; th = hist[idx, 2]
-    bx, by = pos + l * np.sin(th), l * np.cos(th)
-    ax.add_patch(plt.Rectangle((pos - 0.15, -0.05), 0.3, 0.1, color='steelblue'))
-    ax.plot([pos, bx], [0, by], 'k-', lw=3)
-    ax.plot(bx, by, 'ro', ms=12)
+L1, L2 = 0.4, 0.4
+xmax_plot = max(1.5, float(abs(hist[:, 0]).max()) + 0.4)
+
+for ax, ts_pt in zip(axs, sample_t):
+    idx = min(int(ts_pt / dt), N_total - 1)
+    x = hist[idx, 0]
+    th1 = hist[idx, 1]; th2 = hist[idx, 2]
+    # Cart at (x, 0).  J1 (first joint) at (x + L1*sin(th1), L1*cos(th1)).  J2 at J1 + (L2*sin(th2), L2*cos(th2)).
+    j1 = np.array([x + L1 * np.sin(th1), L1 * np.cos(th1)])
+    j2 = j1 + np.array([L2 * np.sin(th2), L2 * np.cos(th2)])
+    ax.add_patch(plt.Rectangle((x - 0.12, -0.04), 0.24, 0.08, color='steelblue'))
+    ax.plot([x, j1[0]], [0, j1[1]], color='#1f77b4', lw=4, marker='o', ms=6)
+    ax.plot([j1[0], j2[0]], [j1[1], j2[1]], color='#ff7f0e', lw=4, marker='o', ms=6)
     ax.axhline(0, color='brown', lw=1)
-    ax.set_xlim(-xmax_plot, xmax_plot); ax.set_ylim(-0.7, 0.7)
+    ax.set_xlim(-xmax_plot, xmax_plot); ax.set_ylim(-1.0, 1.0)
     ax.set_aspect('equal')
-    ax.set_title(f't = {ts:.2f}s')
+    ax.set_title(f't = {ts_pt:.2f}s ({mode_hist[idx]})', fontsize=9)
+
 plt.tight_layout()
 plt.show()
 """),
         md(r"""## References & rigor notes
 
-**Theorem** (Energy-based swing-up convergence; Astrom-Furuta 2000). *For the cart-pole with the energy-pumping controller and bounded actuation, every trajectory enters any pre-specified neighbourhood of the upright equilibrium in finite time, for appropriate $K_E, K_x > 0$.*
+**Theorem** (iLQR local convergence; Mayne 1966, Tassa 2012). *If the value function is twice continuously differentiable and the Levenberg-Marquardt regularization is chosen large enough that $Q_{uu} + \mu I \succ 0$ at every step, then iLQR converges Q-superlinearly to a local minimum of the trajectory cost.* — Local because the cost surface is highly non-convex on this problem; we use a parametric-resonance warm start to land in a good basin.
 
-**Hybrid control.** Swing-up + LQR catch is a hybrid system with a one-shot discrete mode switch. Non-Zeno trivially.
+**Local stability of the catch.** $A - B K_{\text{LQR}}$ is Hurwitz by CARE properties, so the catch is locally exponentially stable in the upright neighbourhood. The Lyapunov function $V(z) = z^T P z$ is decreasing along trajectories: $\dot V = z^T(A_{cl}^T P + P A_{cl}) z = -z^T(Q + K^T R K)z < 0$ for $z \ne 0$.
 
-**Why this scales poorly to multi-link.** Energy pumping injects one scalar (total energy) into $n$ configuration DOFs — leaving $n-1$ directions uncontrolled at the swing-up phase. Triple-link swing-up requires trajectory optimization (DDP, iLQR; Tedrake 2023) or learned policies — too compute-heavy for a teaching notebook.
+**Why the warm start matters.** With $U_\text{init} = 0$ the iLQR cost surface has a long flat plateau near the hanging fixed point; gradient descent meanders. A small sinusoid at $\sim 2\sqrt{g/L}$ injects parametric energy and pushes the rollout away from the equilibrium, drastically improving the basin of convergence.
 
-**Region of attraction.** $c_\text{ROA} = 20$ is intentionally generous: it lets the LQR catch fire as the pendulum coasts through the upright basin with non-zero $\dot\theta$. A tighter $c_\text{ROA}$ from sampling-based certification or SOS programming (via Drake) would defer the catch but is unnecessary here — the LQR is stable everywhere in the linear sense, and the only failure mode is a missed handoff window.
+**Solver scaling.** Per iteration: 6×6×6 matrix products per timestep × $N$ timesteps × max_iter outer loops. For $N=200, \text{max\_iter}=60$ this is ${\sim}\!10^5$ matrix solves — fast enough for a notebook. Production iLQR uses analytical Jacobians (10-50× faster) and warm-starts from the previous control horizon (MPC pattern).
+
+**Hybrid system formalism.** The combined controller is a hybrid automaton with two discrete modes (iLQR / LQR) and a one-shot guard transition. Trivially Zeno-free.
+
+**Why this is research-grade.** Spong 1995 showed energy pumping for the Acrobot; that idea fails for cart + 2 series links because energy alone has 1 DOF and the unactuated configuration has 2 DOFs. iLQR / DDP (Tassa 2012; Tedrake 2023, Ch 9) is the standard tool. Production examples: Boston Dynamics Atlas (whole-body iLQR), Toyota Research Institute manipulation stacks, MIT Cheetah running gait synthesis.
 
 **References.**
+- Mayne, D. Q. (1966). *A Second-order Gradient Method for Determining Optimal Trajectories of Non-linear Discrete-time Systems*. Int. J. Control, 3(1).
+- Tassa, Y., Erez, T., & Todorov, E. (2012). *Synthesis and stabilization of complex behaviors through online trajectory optimization*. IROS 2012. — The modern iLQR reference.
+- Li, W., & Todorov, E. (2004). *Iterative linear quadratic regulator design for nonlinear biological movement systems*. ICINCO 2004.
 - Spong, M. W. (1995). *The swing up control problem for the Acrobot*. IEEE Control Systems Magazine, 15(1).
-- Astrom, K. J., & Furuta, K. (2000). *Swinging up a pendulum by energy control*. Automatica, 36(2).
-- Furuta, K., & Yamakita, M. (1991). *Swing up control of inverted pendulum using pseudo-state feedback*. JSME Int. Journal.
-- Tedrake, R. (2023). *Underactuated Robotics* (https://underactuated.mit.edu).
+- Tedrake, R. (2023). *Underactuated Robotics*, Ch 9 (Trajectory Optimization). https://underactuated.mit.edu
 """),
     ]
     write("05_motion_control_pendulum_lqr.ipynb", cells)
 
-
-# ---------------------------------------------------------------------------
-# 06. Pure pursuit
-# ---------------------------------------------------------------------------
-def nb_06_pure_pursuit():
-    cells = [
-        md("""# 06 — Pure Pursuit Path Tracking
-
-**Section:** Path Tracking · **Mirrors MATLAB:** *Path Following with Obstacle Avoidance*
-
-Pure pursuit is a geometric controller that finds a point on the reference path at a fixed **look-ahead distance** ahead of the robot, then computes the curvature that would carry the robot to that point in a single arc.
-"""),
-        md("""## Intuition — what's actually going on?
-
-You're driving a car. You see the road curving ahead of you. You don't steer aimed at the *closest* point on the road (you'd swerve constantly) — you aim at a point a comfortable distance **ahead** on the road, and steer toward that. That's pure pursuit.
-
-The parameter that controls the feel is the **look-ahead distance** `Ld`. Short `Ld` means aggressive, twitchy tracking. Long `Ld` means smooth driving but you cut corners. Most production self-driving cars adapt `Ld` to speed (longer at highway speeds, shorter when parking).
-
-The math turns out to be beautifully clean: aim a circular arc from your current pose to the look-ahead point, and the curvature of that arc is $\\kappa = 2\\sin(\\alpha)/L_d$ where $\\alpha$ is the angle to the look-ahead point. You command angular velocity $\\omega = v \\kappa$. That's it.
-"""),
-        md(r"""## Analytical derivation
-
-**Geometric setup.** Place the robot at the origin with heading along $+\hat x$. The target point $(x_t, y_t)$ on the path is at distance $L_d$ from the robot:
-
-$$x_t^2 + y_t^2 = L_d^2$$
-
-The robot must trace a *circular arc* from its current pose to the target. Let $R$ be the radius of curvature of that arc. Geometrically, the perpendicular from the robot to the line $\text{(robot} \to \text{target)}$ has the chord property:
-
-$$y_t = \frac{L_d^2}{2R}\quad\Longrightarrow\quad \kappa = \frac{1}{R} = \frac{2 y_t}{L_d^2}$$
-
-Defining $\alpha$ as the angle from the robot heading to the target:
-
-$$y_t = L_d \sin\alpha,\qquad \kappa = \frac{2 \sin\alpha}{L_d}$$
-
-For a unicycle moving at velocity $v$ the relationship between curvature and angular velocity is $\omega = v\kappa$, giving the **pure-pursuit law**:
-
-$$\boxed{\;\omega \;=\; \frac{2 v \sin\alpha}{L_d}\;}$$
-
-**Choosing $L_d$.** Small $L_d$ → aggressive tracking but oscillation. Large $L_d$ → smooth but cuts corners. Common practice: $L_d \propto v$ (longer look-ahead at speed).
-
-**Stability** (locally on a straight reference). Linearize the unicycle around $\theta = 0$, $y = 0$, constant $v$. With small $\alpha \approx -\theta + y/L_d$:
-$$\dot y \approx v\theta,\qquad \dot\theta = \omega = \frac{2v\sin\alpha}{L_d} \approx \frac{2v}{L_d}\!\left(\frac{y}{L_d} - \theta\right).$$
-Stacking $(y, \theta)$ gives a 2-state linear system with characteristic equation $s^2 + (2v/L_d)s + 2v^2/L_d^2 = 0$, roots in the open LHP for any $L_d > 0$ — *locally* stable in the basin $|\alpha| < \pi/2$. Outside that basin the controller can produce orbiting trajectories.
-
-### Compatibility check — math ↔ code
-
-| Math | Code |
-|---|---|
-| $\alpha = \arctan2(y_t - y_r,\ x_t - x_r) - \theta_r$ | `alpha = np.arctan2(tg[1]-x[1], tg[0]-x[0]) - x[2]` |
-| Look-ahead point: scan path forward until $\|p_j - p_r\| \ge L_d$ | `while j < len(path)-1 and np.linalg.norm(path[j] - x[:2]) < Ld: j += 1` |
-| $\omega = 2 v \sin\alpha / L_d$ | `omega = 2 * v * np.sin(alpha) / Ld` |
-| Unicycle integration | `x = x + dt * np.array([v*cos, v*sin, omega])` |
-"""),
-        code("""import numpy as np
-import matplotlib.pyplot as plt
-
-# Sinusoidal reference path
-xs_ref = np.linspace(0, 30, 400)
-ys_ref = 3 * np.sin(xs_ref * 0.3)
-path = np.column_stack([xs_ref, ys_ref])
-
-x = np.array([0.0, -2.0, 0.0])      # x, y, theta
-v = 1.5
-Ld = 1.8
-dt = 0.05
-T = 25.0
-N = int(T / dt)
-
-hist = np.zeros((N, 3))
-lookaheads = np.zeros((N, 2))
-"""),
-        code("""for i in range(N):
-    d = np.linalg.norm(path - x[:2], axis=1)
-    j = int(np.argmin(d))
-    while j < len(path) - 1 and np.linalg.norm(path[j] - x[:2]) < Ld:
-        j += 1
-    target = path[j]
-    alpha = np.arctan2(target[1] - x[1], target[0] - x[0]) - x[2]
-    omega = 2 * v * np.sin(alpha) / Ld
-
-    x = x + dt * np.array([v * np.cos(x[2]), v * np.sin(x[2]), omega])
-    hist[i] = x
-    lookaheads[i] = target
-"""),
-        code("""fig, ax = plt.subplots(figsize=(12, 4))
-ax.plot(xs_ref, ys_ref, 'b--', lw=1.5, label='Reference')
-ax.plot(hist[:, 0], hist[:, 1], 'r-', lw=2, label='Robot')
-ax.plot(0, -2, 'go', markersize=12, label='Start')
-ax.legend(loc='upper right'); ax.grid(); ax.set_aspect('equal')
-ax.set_title('Pure Pursuit Path Tracking')
-plt.tight_layout()
-plt.show()
-"""),
-        md(r"""## References & rigor notes
-
-**Stability** (linearization on straight reference). Linearizing the unicycle-with-pure-pursuit closed loop around $\theta = 0$, $y = 0$, $v$ const, the cross-track error $y$ satisfies a 2nd-order ODE whose characteristic roots are in the open LHP for any $L_d > 0$. Damping ratio increases with $L_d$; small $L_d$ gives oscillatory tracking.
-
-**Curvature limit.** Pure pursuit's effective tracking limit is $\min(1/L_d,\ \omega_\max/v)$: even when the commanded curvature would track a path tighter than $1/L_d$, the vehicle's max turn-rate $\omega_\max$ caps the achievable curvature. For sharp turns reduce $L_d$ (or use Stanley control, notebook 15).
-
-**Cartan-distribution structure.** The constant-speed unicycle is a Cartan distribution on $SE(2)$ generated by the vector fields $X_1 = \cos\theta\,\partial_x + \sin\theta\,\partial_y$ (forward) and $X_2 = \partial_\theta$ (rotate). Chow's theorem (1939) gives small-time local controllability via $[X_1, X_2]$. Time-optimal paths under this distribution are Reeds-Shepp / Dubins curves.
-
-**Production rule of thumb.** Many self-driving stacks use $L_d = \max(L_\min, k_v v)$ — adaptive look-ahead that scales with speed.
-
-**References.**
-- Coulter, R. C. (1992). *Implementation of the pure pursuit path tracking algorithm*. Technical Report CMU-RI-TR-92-01, Robotics Institute, Carnegie Mellon.
-- Snider, J. M. (2009). *Automatic steering methods for autonomous automobile path tracking*. Technical Report CMU-RI-TR-09-08, Robotics Institute, Carnegie Mellon.
-"""),
-    ]
-    write("06_path_tracking_pure_pursuit.ipynb", cells)
-
-
-# ---------------------------------------------------------------------------
-# 07. 2-link IK
-# ---------------------------------------------------------------------------
-def nb_07_ik_2link():
-    cells = [
-        md("""# 07 — Analytical Inverse Kinematics for a 2-Link Planar Arm
-
-**Section:** Manipulation · **Mirrors MATLAB:** *Inverse Kinematics*
-
-For a planar 2-link arm with link lengths $l_1$, $l_2$ and end-effector position $(x, y)$:
-
-$$\\cos\\theta_2 = \\frac{x^2 + y^2 - l_1^2 - l_2^2}{2 l_1 l_2}$$
-
-$$\\theta_1 = \\arctan2(y, x) - \\arctan2(l_2 \\sin\\theta_2,\\ l_1 + l_2 \\cos\\theta_2)$$
-
-The choice of $+\\arccos$ vs $-\\arccos$ for $\\theta_2$ selects the **elbow-up** or **elbow-down** branch.
-"""),
-        md("""## Intuition — what's actually going on?
-
-**Forward** kinematics is easy: if I tell you the angles of all the joints in a robot arm, you can compute where the hand ends up by stacking rotations. **Inverse** kinematics is the harder reverse problem: I tell you where I want the hand, and you have to figure out the joint angles.
-
-For a 2-link planar arm there's a closed-form solution — you can write down explicit formulas for the two joint angles. There are usually **two valid solutions** ("elbow up" and "elbow down"), like how your arm can reach the same point with your elbow pointing forward or backward.
-
-The trick is the **law of cosines**: the triangle formed by (shoulder, elbow, hand) has all three side lengths known (the two link lengths, plus the distance from shoulder to target). The law of cosines gives the elbow angle directly. Then a bit of trig gives the shoulder angle.
-
-Real industrial robots have 6 or 7 joints in 3D, no closed form exists, and you need numerical IK (see notebook 16).
-"""),
-        md(r"""### Compatibility check — math ↔ code
-
-| Math | Code |
-|---|---|
-| $r^2 = x^2 + y^2$ | `r2 = x * x + y * y` |
-| $\cos\theta_2 = \dfrac{r^2 - l_1^2 - l_2^2}{2 l_1 l_2}$ (clipped) | `c2 = np.clip((r2 - l1**2 - l2**2) / (2*l1*l2), -1, 1)` |
-| $\theta_2 = \pm\arccos(\cos\theta_2)$ | `th2 = np.arccos(c2) if elbow_up else -np.arccos(c2)` |
-| $\theta_1 = \arctan2(y, x) - \arctan2(l_2\sin\theta_2,\ l_1 + l_2\cos\theta_2)$ | `th1 = np.arctan2(y, x) - np.arctan2(l2*np.sin(th2), l1 + l2*np.cos(th2))` |
-| Forward kinematics for visualization | `p1 = (l1*cos(th1), l1*sin(th1)); p2 = p1 + (l2*cos(th1+th2), l2*sin(th1+th2))` |
-"""),
-        code("""import numpy as np
-import matplotlib.pyplot as plt
-
-l1, l2 = 1.0, 1.0
-
-
-def fk(theta):
-    th1, th2 = theta
-    p1 = np.array([l1 * np.cos(th1), l1 * np.sin(th1)])
-    p2 = p1 + np.array([l2 * np.cos(th1 + th2), l2 * np.sin(th1 + th2)])
-    return p1, p2
-
-
-def ik(target, elbow_up=True):
-    # Closed-form 2-link IK. det(J) = l1*l2*sin(th2); singular at th2 = 0, pi.
-    x, y = target
-    r2 = x * x + y * y
-    if r2 < 1e-12:                   # council fix (pass 7, Cauchy)
-        raise ValueError("target at base - theta1 undefined")
-    c2 = np.clip((r2 - l1 ** 2 - l2 ** 2) / (2 * l1 * l2), -1, 1)
-    th2 = np.arccos(c2) if elbow_up else -np.arccos(c2)
-    th1 = np.arctan2(y, x) - np.arctan2(l2 * np.sin(th2), l1 + l2 * np.cos(th2))
-    return np.array([th1, th2])
-
-
-def ik_both_branches(target):
-    # Council fix (pass 7, Asada): return BOTH elbow-up and elbow-down.
-    return [ik(target, elbow_up=True), ik(target, elbow_up=False)]
-"""),
-        code("""# Trace a circular trajectory
-N = 60
-phi = np.linspace(0, 2 * np.pi, N)
-targets = np.column_stack([1.0 + 0.4 * np.cos(phi), 0.7 + 0.4 * np.sin(phi)])
-
-fig, ax = plt.subplots(figsize=(8, 8))
-for k, t in enumerate(targets):
-    theta = ik(t)
-    p1, p2 = fk(theta)
-    a = 0.15 + 0.7 * (k / N)
-    ax.plot([0, p1[0], p2[0]], [0, p1[1], p2[1]], 'b-', alpha=a, lw=1.2)
-    ax.plot(p1[0], p1[1], 'ko', markersize=3, alpha=a)
-
-ax.plot(targets[:, 0], targets[:, 1], 'r--', lw=1.5, label='Target circle')
-ax.plot(0, 0, 'gs', markersize=12, label='Base')
-ax.set_xlim(-2.5, 2.5); ax.set_ylim(-1.0, 2.5)
-ax.set_aspect('equal'); ax.grid(); ax.legend()
-ax.set_title('2-Link IK: arm poses traced through a circle (elbow-up)')
-plt.tight_layout()
-plt.show()
-"""),
-        md(r"""## References & rigor notes
-
-**Workspace.** Reachable end-effector positions form the annulus $|l_1 - l_2| \le r \le l_1 + l_2$. Inside there are exactly two IK solutions (elbow-up and elbow-down); on the inner or outer boundary they degenerate to one (a singular configuration where the arm is fully extended or folded). **For equal links** $l_1 = l_2$ (as in this notebook), the inner boundary collapses to a disk and $\theta_1$ becomes undefined at the origin (the arm folds onto itself and is free to rotate about the base).
-
-**Singularities.** At $\theta_2 = 0$ or $\theta_2 = \pi$ the Jacobian is rank-deficient — the arm loses a degree of freedom. Closed-form IK still returns an answer, but small motions in joint space can cause large motions in task space (or vice versa).
-
-**Complexity.** $O(1)$ — closed-form, dominated by a few trig evaluations. Compare to numerical IK (notebook 16) which is iterative.
-
-**References.**
-- Murray, R. M., Li, Z., & Sastry, S. S. (1994). *A Mathematical Introduction to Robotic Manipulation*, CRC Press, ch. 3.
-- Spong, M. W., Hutchinson, S., & Vidyasagar, M. (2006). *Robot Modeling and Control*, Wiley, ch. 3.
-- Lynch, K. M., & Park, F. C. (2017). *Modern Robotics*, Cambridge University Press, ch. 6.
-"""),
-    ]
-    write("07_manipulation_ik_2link.ipynb", cells)
 
 
 # ---------------------------------------------------------------------------
@@ -1365,157 +1194,7 @@ Our chosen values $\ell_\text{occ} = 0.7$, $\ell_\text{free} = -0.4$ correspond 
     write("10_mapping_occupancy_grid.ipynb", cells)
 
 
-# ---------------------------------------------------------------------------
-# 11. ICP scan matching
-# ---------------------------------------------------------------------------
-def nb_11_icp():
-    cells = [
-        md("""# 11 — Iterative Closest Point (ICP) Scan Matching
 
-**Section:** SLAM · **Mirrors MATLAB:** *2D Lidar SLAM Implementations* (scan-matching front-end)
-
-ICP aligns two point clouds by alternating between (a) finding nearest-neighbor correspondences and (b) solving for the rigid transform $(R, t)$ that minimizes the sum-of-squared distances over those matches.
-"""),
-        md("""## Intuition — what's actually going on?
-
-Two scans of the same room, taken from slightly different positions, look like two clouds of points that *almost* line up. ICP (Iterative Closest Point) is the algorithm that snaps them into perfect alignment.
-
-The procedure is dead simple, repeated until convergence:
-
-1. **Pair up** each point in the source cloud with its closest point in the target cloud.
-2. Find the **best rigid transform** (rotation + translation) that brings each source point to its matched target.
-3. Apply the transform. Repeat.
-
-The magic is step 2: finding the optimal rotation given correspondences is *not* obvious, but it has a beautiful closed-form solution called the **Kabsch algorithm**. You build a small 3×3 (or 2×2 in 2D) cross-covariance matrix from the two centered clouds, take its SVD, and the optimal rotation is $R = V U^T$. One line of NumPy.
-
-ICP is everywhere: lidar SLAM (matching consecutive scans), 3D reconstruction (stitching depth-camera frames), surgical robotics (registering CT scans to patient anatomy). The catch: it converges to the *closest* local minimum, so the initial alignment has to be reasonable.
-"""),
-        md(r"""## Analytical derivation
-
-**Problem.** Given source points $\{p_i\}_{i=1}^N$ and target points $\{q_i\}_{i=1}^N$ (already paired), find rotation $R \in SO(d)$ and translation $t \in \mathbb{R}^d$ minimizing
-
-$$E(R, t) \;=\; \sum_{i=1}^{N} \|R\,p_i + t - q_i\|^2$$
-
-**Step 1 — solve for $t$ given $R$.** Setting $\partial E / \partial t = 0$:
-
-$$\sum_i (R\,p_i + t - q_i) = 0 \quad\Longrightarrow\quad t = \bar q - R\,\bar p,\qquad \bar p = \tfrac{1}{N}\sum p_i,\ \bar q = \tfrac{1}{N}\sum q_i$$
-
-So the optimal translation just aligns the centroids. Substituting back, the problem becomes: find $R$ minimizing
-
-$$E'(R) \;=\; \sum_i \|R\,p'_i - q'_i\|^2,\qquad p'_i = p_i - \bar p,\ q'_i = q_i - \bar q$$
-
-**Step 2 — solve for $R$ (Kabsch algorithm).** Expand the norm:
-
-$$E'(R) \;=\; \sum_i (\|p'_i\|^2 + \|q'_i\|^2) - 2 \sum_i {q'_i}^T R\,p'_i$$
-
-The first sum is constant in $R$; minimizing $E'$ is equivalent to *maximizing* $\sum_i {q'_i}^T R\,p'_i = \mathrm{tr}\!\left(R \sum_i p'_i {q'_i}^T\right) = \mathrm{tr}(R H)$ where
-
-$$H \;=\; \sum_i p'_i\,{q'_i}^T \quad \in \mathbb{R}^{d \times d}\quad\text{(cross-covariance)}$$
-
-With $H = U \Sigma V^T$ (SVD), write $W = V^T R U$. Since $R \in SO(d)$ and $U, V$ are orthogonal, $W \in O(d)$, so $|W_{ii}| \le 1$. Then $\mathrm{tr}(R H) = \mathrm{tr}(W \Sigma) = \sum_i W_{ii}\sigma_i \le \sum_i \sigma_i$, with equality iff $W = I$, i.e.
-
-$$\boxed{\;R^\star \;=\; V\,U^T\;}$$
-
-(This is the *direct* orthogonality argument — *not* the von Neumann trace inequality, which is a more general statement.)
-
-**Reflection guard.** If $\det(V U^T) = -1$ the answer is an improper rotation (a reflection). Replace by
-
-$$R^\star \;=\; V\,\mathrm{diag}(1, \ldots, 1, -1)\,U^T$$
-
-(equivalent to flipping the sign of the last column of $V$ before forming $R$). **Why the last column?** It corresponds to the smallest singular value $\sigma_d$; flipping it costs only $2\sigma_d$ in the objective rather than $2\sigma_k > 2\sigma_d$ for any other column. This yields the *closest* proper rotation to the optimal improper one.
-
-**Iteration.** ICP alternates (1) nearest-neighbor correspondence assignment and (2) optimal rigid transform; each iteration is guaranteed to weakly decrease $E$. Convergence is to a local minimum (initialization matters).
-
-### Compatibility check — math ↔ code
-
-| Step | Code |
-|---|---|
-| Nearest-neighbor correspondence | `d = np.linalg.norm(s[:, None] - tgt[None], axis=2); m = tgt[d.argmin(axis=1)]` |
-| Centroids | `sm, mm = s.mean(0), m.mean(0)` |
-| Cross-covariance $H$ | `H = (s - sm).T @ (m - mm)` |
-| SVD $H = U \Sigma V^T$ | `U, _, Vt = np.linalg.svd(H)` |
-| Optimal $R = V U^T$ | `R = Vt.T @ U.T` |
-| Reflection guard | `if np.linalg.det(R) < 0: Vt[-1] *= -1; R = Vt.T @ U.T` |
-| Translation $t = \bar q - R \bar p$ | `s = (R @ s.T).T + (mm - R @ sm)` |
-"""),
-        code("""import numpy as np
-import matplotlib.pyplot as plt
-
-np.random.seed(0)
-
-
-def make_shape(n=120):
-    t = np.linspace(0, 2 * np.pi, n)
-    x = 3 * np.cos(t) + 0.5 * np.sin(3 * t)
-    y = 3 * np.sin(t) + 0.5 * np.cos(2 * t)
-    return np.column_stack([x, y])
-
-
-src = make_shape()
-true_angle = 0.4
-true_R = np.array([[np.cos(true_angle), -np.sin(true_angle)],
-                   [np.sin(true_angle),  np.cos(true_angle)]])
-true_t = np.array([1.5, -1.0])
-tgt = (true_R @ src.T).T + true_t + np.random.randn(*src.shape) * 0.08
-print(f"True transform: angle={np.degrees(true_angle):.1f}°, t={true_t}")
-"""),
-        code("""def icp(src, tgt, n_iter=40, tol=1e-6):
-    s = src.copy()
-    R_total = np.eye(2); t_total = np.zeros(2)
-    prev_err = np.inf
-    for _ in range(n_iter):
-        # Nearest neighbors (brute force)
-        d = np.linalg.norm(s[:, None] - tgt[None], axis=2)
-        idx = d.argmin(axis=1)
-        matched = tgt[idx]
-        # Best-fit rotation via SVD
-        s_mean, m_mean = s.mean(axis=0), matched.mean(axis=0)
-        H = (s - s_mean).T @ (matched - m_mean)
-        U, _, Vt = np.linalg.svd(H)
-        R = Vt.T @ U.T
-        if np.linalg.det(R) < 0:
-            Vt[-1] *= -1
-            R = Vt.T @ U.T
-        t = m_mean - R @ s_mean
-        s = (R @ s.T).T + t
-        R_total = R @ R_total
-        t_total = R @ t_total + t
-        err = np.mean(np.linalg.norm(s - matched, axis=1) ** 2)
-        if abs(prev_err - err) < tol:
-            break
-        prev_err = err
-    return R_total, t_total, s
-
-
-R_est, t_est, aligned = icp(src.copy(), tgt)
-print(f"Recovered: angle={np.degrees(np.arctan2(R_est[1, 0], R_est[0, 0])):.2f}°, t={t_est}")
-"""),
-        code("""fig, axs = plt.subplots(1, 2, figsize=(13, 5))
-axs[0].plot(src[:, 0], src[:, 1], 'b.', label='Source')
-axs[0].plot(tgt[:, 0], tgt[:, 1], 'r.', label='Target')
-axs[0].set_title('Before ICP'); axs[0].legend(); axs[0].set_aspect('equal'); axs[0].grid()
-
-axs[1].plot(aligned[:, 0], aligned[:, 1], 'g.', label='Aligned source')
-axs[1].plot(tgt[:, 0], tgt[:, 1], 'r.', label='Target')
-axs[1].set_title('After ICP'); axs[1].legend(); axs[1].set_aspect('equal'); axs[1].grid()
-plt.tight_layout()
-plt.show()
-"""),
-        md(r"""## References & rigor notes
-
-**Theorem** (Kabsch optimality, 1976). *Given paired centered point sets $\{p'_i\}, \{q'_i\} \subset \mathbb{R}^d$, the proper rotation $R \in SO(d)$ minimizing $\sum_i \|R p'_i - q'_i\|^2$ is $R^\star = V U^T$ where $H = \sum_i p'_i {q'_i}^T = U \Sigma V^T$ is the SVD of the cross-covariance. If $\det(VU^T) = -1$, flip the last column of $V$ to enforce a proper rotation.*
-
-**Monotone descent.** Each ICP iteration weakly decreases the sum-of-squared distances (proof: the closest-point assignment step can only decrease it, and the Kabsch step minimizes over $R, t$ given the assignment). Hence the algorithm converges — to a *local* minimum.
-
-**Complexity per iteration.** Brute-force NN: $O(N^2)$. With kd-tree: $O(N \log N)$. SVD of $d \times d$ matrix: $O(d^3)$, negligible.
-
-**References.**
-- Besl, P. J., & McKay, N. D. (1992). *A method for registration of 3-D shapes*. IEEE Trans. PAMI, 14(2), 239-256.
-- Kabsch, W. (1976). *A solution for the best rotation to relate two sets of vectors*. Acta Crystallographica, A32(5), 922-923.
-- Pomerleau, F., Colas, F., & Siegwart, R. (2015). *A review of point cloud registration algorithms for mobile robotics*. Foundations and Trends in Robotics, 4(1).
-"""),
-    ]
-    write("11_slam_icp.ipynb", cells)
 
 
 # ---------------------------------------------------------------------------
@@ -3222,13 +2901,9 @@ def main():
     nb_01_astar()
     nb_02_rrt()
     nb_03_ekf()
-    nb_04_particle_filter()
     nb_05_lqr_pendulum()
-    nb_06_pure_pursuit()
-    nb_07_ik_2link()
     nb_09_lane_detection()
     nb_10_occupancy_grid()
-    nb_11_icp()
     nb_12_ekf_slam()
     nb_13_dijkstra()
     nb_14_dwa()

@@ -60,7 +60,7 @@ A 🏠 entry implies the row is also mapped — the notebook is in addition to (
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
 | 1 | Tools for rigid body tree dynamics and analysis | ✅ | Pinocchio, Robotics Toolbox for Python |
-| 2 | Inverse Kinematics | 🏠 | **Notebook [07](notebooks/07_manipulation_ik_2link.ipynb)** (analytical 2-link IK) + ikpy, MoveIt 2, TRAC-IK |
+| 2 | Inverse Kinematics | 🏠 | **Notebook [16](notebooks/16_manipulation_jacobian_ik.ipynb)** (Jacobian-based damped least-squares IK) + ikpy, MoveIt 2, TRAC-IK |
 | 3 | Inverse kinematics with spatial constraints | 🏠 | **Notebook [16](notebooks/16_manipulation_jacobian_ik.ipynb)** (Jacobian-based numerical IK) + MoveIt 2, TRAC-IK |
 | 4 | Interactive Inverse Kinematics | ✅ | MoveIt 2 (RViz interactive markers) |
 | 5 | Collision checking (self-collisions) | ✅ | `python-fcl`, PyBullet collision API |
@@ -107,11 +107,11 @@ A 🏠 entry implies the row is also mapped — the notebook is in addition to (
 
 | # | MATLAB Entry | Status | Python Equivalent |
 |---|---|---|---|
-| 1 | 2D Lidar SLAM (offline + online) | 🏠 | **Notebooks [11](notebooks/11_slam_icp.ipynb)** (ICP scan matching) **+ [12](notebooks/12_slam_ekf_slam.ipynb)** (EKF-SLAM) + `python-graphslam`, `Cartographer` |
+| 1 | 2D Lidar SLAM (offline + online) | 🏠 | **Notebook [12](notebooks/12_slam_ekf_slam.ipynb)** (EKF-SLAM with range-bearing landmarks) + `python-graphslam`, `Cartographer`, `KISS-ICP` |
 | 2 | 3D Lidar SLAM | ✅ | `KISS-ICP` |
 | 3 | SLAM Map Builder Application | ✅ | `RTAB-Map` (built-in GUI map builder) |
 | 4 | Occupancy Grid Utilities | 🏠 | **Notebook [10](notebooks/10_mapping_occupancy_grid.ipynb)** (log-odds grid from lidar) + `nav2_map_server` |
-| 5 | Monte Carlo Localization | 🏠 | **Notebooks [03](notebooks/03_localization_ekf.ipynb)** (EKF) **+ [04](notebooks/04_localization_particle_filter.ipynb)** (Particle filter MCL) + Nav2 AMCL |
+| 5 | Monte Carlo Localization | 🏠 | **Notebook [03](notebooks/03_localization_ekf.ipynb)** (EKF localization with range-bearing landmarks) + Nav2 AMCL, particle-filter `pfilter` |
 | 6 | Ego-Centric (Near Field) Occupancy Maps | ✅ | `grid_map` (ANYbotics) |
 
 ## Motion Planning and Path Planning
@@ -122,7 +122,7 @@ A 🏠 entry implies the row is also mapped — the notebook is in addition to (
 | 2 | RRT Planners for Manipulators | ✅ | MoveIt 2, OMPL |
 | 3 | RRT Planners for Mobile Robots | 🏠 | **Notebook [02](notebooks/02_motion_planning_rrt.ipynb)** (RRT with 10% goal bias) + PythonRobotics |
 | 4 | Path Planning Using Probabilistic Road Maps | ✅ | OMPL |
-| 5 | Path Following with Obstacle Avoidance | 🏠 | **Notebooks [06](notebooks/06_path_tracking_pure_pursuit.ipynb)** (pure pursuit) **+ [14](notebooks/14_motion_planning_dwa.ipynb)** (DWA) **+ [15](notebooks/15_path_tracking_stanley.ipynb)** (Stanley) + PythonRobotics, Nav2 |
+| 5 | Path Following with Obstacle Avoidance | 🏠 | **Notebooks [14](notebooks/14_motion_planning_dwa.ipynb)** (DWA) **+ [15](notebooks/15_path_tracking_stanley.ipynb)** (Stanley front-axle controller) + PythonRobotics, Nav2 |
 | 6 | Dynamic Re-planning of Paths | ✅ | Nav2 lifecycle replanning + PythonRobotics DWA dynamic obstacles |
 | 7 | Choosing Path Planning Algorithms (guide) | ✅ | PythonRobotics planning algorithm guide |
 
@@ -134,7 +134,7 @@ A 🏠 entry implies the row is also mapped — the notebook is in addition to (
 | 2 | Deep RL for Walking Robots | ✅ | legged_gym, Stable-Baselines3 |
 | 3 | MPC for Collision-Free Manipulation | ✅ | do-mpc, CasADi |
 | 4 | MPC for Holonomic Robot Navigation | ✅ | do-mpc |
-| 5 | Multi-Loop PI Tuning for Robotic Arm | 🏠 | **Notebook [05](notebooks/05_motion_control_pendulum_lqr.ipynb)** (cart-pole swing-up + LQR catch) + `TCLab`, `simple-pid`, `python-control` |
+| 5 | Multi-Loop PI Tuning for Robotic Arm | 🏠 | **Notebook [05](notebooks/05_motion_control_pendulum_lqr.ipynb)** (2-link cart-pendulum iLQR swing-up + LQR catch) + `TCLab`, `simple-pid`, `python-control` |
 
 ## Unmanned Aerial Vehicles (UAV)
 
@@ -318,20 +318,16 @@ The following are **➖ N/A** (Simulink-specific concepts that don't translate t
 
 ## Appendix B: Our own implementations
 
-This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for the full collection — 21 runnable Jupyter notebooks with embedded plots.
+This repo is transitioning from a pure curated link list to also hosting **first-party Python implementations** of the major MATLAB demos. See [notebooks/](notebooks/) for the full collection — 17 runnable Jupyter notebooks with embedded plots, curated for portfolio-grade depth (trajectory optimization, MPC, CBF, EKF SLAM, symbolic Lagrangian dynamics).
 
 | # | Notebook | Section it covers in TRACKING above |
 |---|---|---|
 | 01 | [A* path planning](notebooks/01_motion_planning_astar.ipynb) | Motion Planning #1 |
 | 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning #3 |
 | 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | SLAM #5 |
-| 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | SLAM #5 |
-| 05 | [Cart-pole swing-up + LQR catch](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control #5 |
-| 06 | [Pure pursuit](notebooks/06_path_tracking_pure_pursuit.ipynb) | Motion Planning #5 |
-| 07 | [Analytical 2-link IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation #2 |
+| 05 | [2-link cart-pendulum: iLQR swing-up + LQR catch](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control #5 |
 | 09 | [Lane detection (Canny + Hough)](notebooks/09_perception_lane_detection.ipynb) | Auto Driving #1 |
 | 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | SLAM #4 |
-| 11 | [ICP scan matching](notebooks/11_slam_icp.ipynb) | SLAM #1 |
 | 12 | [EKF SLAM](notebooks/12_slam_ekf_slam.ipynb) | SLAM #1 |
 | 13 | [Dijkstra](notebooks/13_motion_planning_dijkstra.ipynb) | Motion Planning #1 |
 | 14 | [Dynamic Window Approach (DWA)](notebooks/14_motion_planning_dwa.ipynb) | Motion Planning #5 |

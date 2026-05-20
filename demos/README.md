@@ -8,7 +8,7 @@ Three pygame-based interactive demos that let you **drive, plan, and pose** the 
 pip install pygame
 ```
 
-(pygame is intentionally left out of the main `requirements.txt` because it's only needed for these demos — the 21 notebooks don't depend on it.)
+(pygame is intentionally left out of the main `requirements.txt` because it's only needed for these demos — the 17 notebooks don't depend on it.)
 
 ## Run any demo
 
@@ -45,7 +45,7 @@ Mirrors [Notebook 01](../notebooks/01_motion_planning_astar.ipynb). Paint or era
 | Q / Esc | quit |
 
 ### `move_arm.py` — Mouse-Controlled 2-Link IK
-Mirrors [Notebooks 07](../notebooks/07_manipulation_ik_2link.ipynb) and [16](../notebooks/16_manipulation_jacobian_ik.ipynb). The end-effector tracks your cursor in real time using the analytical inverse kinematics from Notebook 07. The cursor turns orange when you leave the reachable workspace.
+Mirrors [Notebook 16](../notebooks/16_manipulation_jacobian_ik.ipynb) (Jacobian-based IK). The end-effector tracks your cursor in real time using a closed-form 2-link inverse-kinematics solution; the cursor turns orange when you leave the reachable workspace.
 
 | Key | Action |
 |---|---|

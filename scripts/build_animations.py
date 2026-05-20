@@ -174,269 +174,219 @@ def anim_rrt():
     save(anim, "rrt_growth", fps=15)
 
 
-# ----- 3. Particle filter collapse -----
-def anim_pf():
-    np.random.seed(0)
-    T, dt = 100, 0.1
-    true_x = np.zeros((T, 3))
-    for t in range(T):
-        a = t * dt
-        true_x[t] = [5 * np.sin(a), 3 * np.sin(2 * a), a]
-    landmarks = np.array([[6, 0], [-6, 0], [0, 4], [0, -4], [4, 4], [-4, -4]])
-
-    N = 400
-    particles = np.zeros((N, 3))
-    particles[:, :2] = np.random.uniform(-4, 4, (N, 2))
-    particles[:, 2] = np.random.uniform(-np.pi, np.pi, N)
-    range_noise = 0.25
-
-    snaps = []
-    for t in range(T):
-        u = (true_x[t] - true_x[t - 1]) if t > 0 else np.zeros(3)
-        particles += u + np.random.randn(N, 3) * np.array([0.08, 0.08, 0.04])
-        z = np.linalg.norm(landmarks - true_x[t, :2], axis=1) + np.random.randn(len(landmarks)) * range_noise
-        expected = np.linalg.norm(landmarks[:, None, :] - particles[None, :, :2], axis=2)
-        err = (z[:, None] - expected) / range_noise
-        log_w = -0.5 * np.sum(err ** 2, axis=0)
-        w = np.exp(log_w - log_w.max()); w /= w.sum()
-        idx = np.searchsorted(np.cumsum(w), (np.arange(N) + np.random.random()) / N)
-        particles = particles[idx]
-        snaps.append(particles.copy())
-
-    fig, ax = plt.subplots(figsize=(7, 7))
-    ax.scatter(landmarks[:, 0], landmarks[:, 1], c="k", marker="*", s=180, zorder=5)
-    truth_line, = ax.plot([], [], "b-", lw=2)
-    scat = ax.scatter([], [], c="g", s=6, alpha=0.5)
-    cur_dot, = ax.plot([], [], "ro", ms=10)
-    ax.set_xlim(-7, 7); ax.set_ylim(-5, 5); ax.set_aspect("equal")
-    ax.set_title("Particle Filter Localization")
-    ax.set_xticks([]); ax.set_yticks([])
-
-    def update(t):
-        truth_line.set_data(true_x[:t + 1, 0], true_x[:t + 1, 1])
-        scat.set_offsets(snaps[t][:, :2])
-        cur_dot.set_data([true_x[t, 0]], [true_x[t, 1]])
-        return [truth_line, scat, cur_dot]
-
-    anim = FuncAnimation(fig, update, frames=T, interval=80, blit=False)
-    save(anim, "particle_filter", fps=15)
-
-
-# ----- 4. LQR triple-link inverted pendulum -----
+# ----- 4. 2-link cart-pendulum swing-up via iLQR + LQR catch -----
 def anim_pendulum():
-    """Cart-pole swing-up + LQR catch.
+    """Cart + double pendulum swing-up via iLQR + LQR catch.
 
-    Starts pendulum hanging straight down, pumps mechanical energy via cart
-    motion alone (the only actuator) until the pendulum enters the LQR basin,
-    then catches with a CARE-based LQR. Matches notebook 05 exactly.
+    Matches notebook 05. Derives dynamics symbolically (sympy.physics.mechanics),
+    runs ~60 iterations of iLQR (~20 s), then animates the closed-loop trajectory.
+    Bob colors: orange = iLQR open-loop swing-up, lime = LQR catch.
     """
-    M, m, l, g = 1.0, 0.2, 0.5, 9.81
+    import warnings
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+    import sympy as sp
+    import sympy.physics.mechanics as me
+
+    print("    (deriving cart-double-pendulum dynamics + running iLQR — ~25 s)")
+
+    t_sym = me.dynamicsymbols._t
+    q = me.dynamicsymbols('x th1 th2')
+    qd = [qi.diff(t_sym) for qi in q]
+    u_sym = me.dynamicsymbols('u')
+    Mc_s, g_s = sp.symbols('Mc g', positive=True)
+    m1_s, m2_s = sp.symbols('m1 m2', positive=True)
+    L1_s, L2_s = sp.symbols('L1 L2', positive=True)
+    Nf = me.ReferenceFrame('Nf')
+    O = me.Point('O'); O.set_vel(Nf, 0)
+    Pc = O.locatenew('Pc', q[0] * Nf.x)
+    Pc.set_vel(Nf, qd[0] * Nf.x)
+    cart = me.Particle('Cart', Pc, Mc_s)
+    A1 = Nf.orientnew('A1', 'Axis', [q[1], Nf.z])
+    A1.set_ang_vel(Nf, qd[1] * Nf.z)
+    P1 = Pc.locatenew('P1', (L1_s / 2) * A1.y); P1.v2pt_theory(Pc, Nf, A1)
+    link1 = me.Particle('L1', P1, m1_s)
+    J1 = Pc.locatenew('J1', L1_s * A1.y); J1.v2pt_theory(Pc, Nf, A1)
+    A2 = Nf.orientnew('A2', 'Axis', [q[2], Nf.z])
+    A2.set_ang_vel(Nf, qd[2] * Nf.z)
+    P2 = J1.locatenew('P2', (L2_s / 2) * A2.y); P2.v2pt_theory(J1, Nf, A2)
+    link2 = me.Particle('L2', P2, m2_s)
+    KE = sum(b.kinetic_energy(Nf) for b in [cart, link1, link2])
+    PE = sum(b.mass * g_s * b.point.pos_from(O).dot(Nf.y) for b in [cart, link1, link2])
+    LM = me.LagrangesMethod(KE - PE, q, forcelist=[(Pc, u_sym * Nf.x)], frame=Nf)
+    LM.form_lagranges_equations()
+    params = {Mc_s: 1.0, g_s: 9.81, m1_s: 0.3, m2_s: 0.3, L1_s: 0.4, L2_s: 0.4}
+    M_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.mass_matrix_full.subs(params), 'numpy')
+    F_fn = sp.lambdify(list(q) + list(qd) + [u_sym], LM.forcing_full.subs(params), 'numpy')
 
     def nl_dyn(z, u):
-        pos, vel, th, om = z
-        s, c = np.sin(th), np.cos(th)
-        den = M + m * s ** 2
-        acc = (u + m * l * s * om ** 2 - m * g * s * c) / den
-        a_th = ((M + m) * g * s - u * c - m * l * s * c * om ** 2) / (l * den)
-        return np.array([vel, acc, om, a_th])
+        args = list(z) + [u]
+        Mm = np.asarray(M_fn(*args), dtype=float)
+        Ff = np.asarray(F_fn(*args), dtype=float).flatten()
+        return np.linalg.solve(Mm, Ff)
 
-    def E_pend(z):
-        pos, vel, th, om = z
-        bob_vx = vel + l * np.cos(th) * om
-        bob_vy = -l * np.sin(th) * om
-        return 0.5 * m * (bob_vx ** 2 + bob_vy ** 2) + m * g * l * np.cos(th)
+    def step(z, u, dt):
+        k1 = nl_dyn(z, u); k2 = nl_dyn(z + 0.5 * dt * k1, u)
+        k3 = nl_dyn(z + 0.5 * dt * k2, u); k4 = nl_dyn(z + dt * k3, u)
+        return z + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
-    E_star = m * g * l
+    def wrap(a):
+        return (a + np.pi) % (2 * np.pi) - np.pi
 
-    A = np.array([[0, 1, 0, 0],
-                  [0, 0, -m * g / M, 0],
-                  [0, 0, 0, 1],
-                  [0, 0, (M + m) * g / (M * l), 0]])
-    B = np.array([[0], [1 / M], [0], [-1 / (M * l)]])
-    Q = np.diag([1.0, 1.0, 20.0, 1.0])
-    R_lqr = np.array([[0.1]])
-    P_riccati = solve_continuous_are(A, B, Q, R_lqr)
-    K_lqr = np.linalg.inv(R_lqr) @ B.T @ P_riccati
+    # LQR around upright
+    eps = 1e-6; z_eq = np.zeros(6)
+    A_lin = np.zeros((6, 6)); B_lin = np.zeros((6, 1))
+    for i in range(6):
+        zp = z_eq.copy(); zp[i] += eps; zm = z_eq.copy(); zm[i] -= eps
+        A_lin[:, i] = (nl_dyn(zp, 0.0) - nl_dyn(zm, 0.0)) / (2 * eps)
+    B_lin[:, 0] = (nl_dyn(z_eq, eps) - nl_dyn(z_eq, -eps)) / (2 * eps)
+    Q_lqr = np.diag([10.0, 100.0, 100.0, 1.0, 1.0, 1.0])
+    R_lqr_m = np.array([[0.1]])
+    P_riccati = solve_continuous_are(A_lin, B_lin, Q_lqr, R_lqr_m)
+    K_lqr = np.linalg.inv(R_lqr_m) @ B_lin.T @ P_riccati
 
-    K_x, K_xd = 1.0, 0.5
-    u_max, theta_LQR, c_ROA = 15.0, 0.5, 20.0
+    def diff_to_goal(z, zg):
+        zd = z.copy()
+        zd[1] = wrap(z[1] - zg[1]); zd[2] = wrap(z[2] - zg[2])
+        zd[0] -= zg[0]; zd[3:] -= zg[3:]
+        return zd
 
-    def wrap(angle):
-        return (angle + np.pi) % (2 * np.pi) - np.pi
+    def linearize(z, u, dt):
+        f0 = step(z, u, dt)
+        fx = np.zeros((6, 6)); fu = np.zeros((6, 1)); e = 1e-5
+        for i in range(6):
+            zp = z.copy(); zp[i] += e
+            fx[:, i] = (step(zp, u, dt) - f0) / e
+        fu[:, 0] = (step(z, u + e, dt) - f0) / e
+        return fx, fu
 
-    def control(z):
-        th_w = wrap(z[2])
-        zl = np.array([z[0], z[1], th_w, z[3]])
-        if abs(th_w) < theta_LQR and (zl @ P_riccati @ zl) < c_ROA:
-            return float(np.clip(-(K_lqr @ zl).item(), -u_max, u_max)), "LQR"
-        Ep = E_pend(z)
-        sv = (Ep - E_star) * np.cos(z[2]) * z[3]
-        u_pump = +u_max * np.sign(sv) if abs(sv) > 1e-6 else 0.0
-        u_cart = -K_x * z[0] - K_xd * z[1]
-        return float(np.clip(u_pump + u_cart, -u_max, u_max)), "swing"
+    def total_cost(zs, us, zg, Q, R, Qf):
+        J = 0.0
+        for tt in range(len(us)):
+            zd = diff_to_goal(zs[tt], zg)
+            J += zd @ Q @ zd + R[0, 0] * us[tt] ** 2
+        zd = diff_to_goal(zs[-1], zg)
+        return J + zd @ Qf @ zd
 
-    dt = 0.002
-    T_sim = 6.0
-    N = int(T_sim / dt)
-    z = np.array([0.0, 0.0, np.pi, 0.1])
-    states = np.zeros((N, 4))
-    modes = []
-    for i in range(N):
-        u, mode = control(z)
-        states[i] = z
-        modes.append(mode)
-        z = z + dt * nl_dyn(z, u)
+    def ilqr_run(z0, zg, U_init, dt, N, Q, R, Qf, u_max=30.0, max_iter=60):
+        U = U_init.copy()
+        Z = np.zeros((N + 1, 6)); Z[0] = z0
+        for tt in range(N):
+            Z[tt + 1] = step(Z[tt], float(U[tt]), dt)
+        J_prev = total_cost(Z, U, zg, Q, R, Qf); mu = 1.0
+        for it in range(max_iter):
+            fx_arr = np.zeros((N, 6, 6)); fu_arr = np.zeros((N, 6, 1))
+            for tt in range(N):
+                fx_arr[tt], fu_arr[tt] = linearize(Z[tt], float(U[tt]), dt)
+            zd_f = diff_to_goal(Z[-1], zg); Vx = 2 * Qf @ zd_f; Vxx = 2 * Qf
+            K_gain = np.zeros((N, 1, 6)); k_gain = np.zeros((N, 1)); ok = True
+            for tt in range(N - 1, -1, -1):
+                zd = diff_to_goal(Z[tt], zg)
+                lx = 2 * Q @ zd; lu = np.array([2 * R[0, 0] * float(U[tt])])
+                lxx = 2 * Q; luu = 2 * R
+                fx, fu = fx_arr[tt], fu_arr[tt]
+                Qx = lx + fx.T @ Vx; Qu = lu + fu.T @ Vx
+                Qxx = lxx + fx.T @ Vxx @ fx; Qux = fu.T @ Vxx @ fx
+                Quu = luu + fu.T @ Vxx @ fu
+                try:
+                    Quu_inv = np.linalg.inv(Quu + mu * np.eye(1))
+                except np.linalg.LinAlgError:
+                    ok = False; break
+                k_t = -Quu_inv @ Qu; K_t = -Quu_inv @ Qux
+                K_gain[tt] = K_t; k_gain[tt] = k_t.flatten()
+                Vx = Qx + K_t.T @ Quu @ k_t.flatten() + K_t.T @ Qu + Qux.T @ k_t.flatten()
+                Vxx = Qxx + K_t.T @ Quu @ K_t + K_t.T @ Qux + Qux.T @ K_t
+                Vxx = 0.5 * (Vxx + Vxx.T)
+            if not ok:
+                mu *= 10; continue
+            best_J = J_prev; best_Z = None; best_U = None
+            for alpha in [1.0, 0.5, 0.25, 0.1, 0.05, 0.01]:
+                U_new = np.zeros(N); Z_new = np.zeros((N + 1, 6)); Z_new[0] = z0
+                for tt in range(N):
+                    dz = Z_new[tt] - Z[tt]
+                    dz[1] = wrap(dz[1]); dz[2] = wrap(dz[2])
+                    u_new = U[tt] + alpha * k_gain[tt, 0] + (K_gain[tt] @ dz).item()
+                    u_new = float(np.clip(u_new, -u_max, u_max))
+                    U_new[tt] = u_new
+                    Z_new[tt + 1] = step(Z_new[tt], u_new, dt)
+                J_new = total_cost(Z_new, U_new, zg, Q, R, Qf)
+                if J_new < J_prev:
+                    best_J = J_new; best_Z = Z_new; best_U = U_new; break
+            if best_Z is None:
+                mu *= 2
+                if mu > 1e6: break
+                continue
+            improvement = J_prev - best_J
+            Z = best_Z; U = best_U; J_prev = best_J
+            mu = max(0.1, mu / 2)
+            if improvement < 1e-3 and it > 15: break
+        return Z, U
 
-    # Sub-sample to ~120 frames for a snappy GIF.
-    stride = max(1, N // 120)
-    states_a = states[::stride]
-    modes_a = modes[::stride]
+    # ---- Optimize trajectory ----
+    N = 200; dt = 0.02
+    z0 = np.array([0.0, np.pi, np.pi, 0.0, 0.0, 0.0])
+    zg = np.zeros(6)
+    Q_run = np.diag([0.1, 1.0, 1.0, 0.01, 0.01, 0.01])
+    Qf = np.diag([10.0, 100.0, 100.0, 10.0, 10.0, 10.0])
+    R = np.array([[0.01]])
+    omega_n = np.sqrt(9.81 / 0.4)
+    ts = np.arange(N) * dt
+    U_init = 8.0 * np.sin(2 * omega_n * ts)
+    Z_opt, U_opt = ilqr_run(z0, zg, U_init, dt, N, Q_run, R, Qf, u_max=30.0, max_iter=60)
 
-    fig, ax = plt.subplots(figsize=(7, 5))
-    xmax = max(2.0, float(abs(states_a[:, 0]).max()) + 0.3)
-    ax.set_xlim(-xmax, xmax); ax.set_ylim(-0.8, 0.8); ax.set_aspect("equal")
+    # ---- Hybrid simulation ----
+    theta_LQR = 0.4; c_ROA = 10.0
+    def hybrid(z, t_idx):
+        zl = z.copy(); zl[1] = wrap(zl[1]); zl[2] = wrap(zl[2])
+        inside = (abs(zl[1]) < theta_LQR and abs(zl[2]) < theta_LQR
+                  and (zl @ P_riccati @ zl) < c_ROA)
+        if inside:
+            return float(np.clip(-(K_lqr @ zl).item(), -30, 30)), "LQR"
+        if t_idx < len(U_opt):
+            return float(U_opt[t_idx]), "iLQR"
+        return float(np.clip(-(K_lqr @ zl).item(), -30, 30)), "LQR"
+
+    T_sim = 6.0; N_total = int(T_sim / dt)
+    z = z0.copy()
+    states = np.zeros((N_total, 6)); modes = []
+    for i in range(N_total):
+        u, mode = hybrid(z, i)
+        states[i] = z; modes.append(mode)
+        z = step(z, u, dt)
+
+    # ---- Animation ----
+    L1, L2 = 0.4, 0.4
+    stride = max(1, N_total // 120)
+    states_a = states[::stride]; modes_a = modes[::stride]
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+    xmax = max(1.2, float(abs(states_a[:, 0]).max()) + 0.3)
+    ax.set_xlim(-xmax, xmax); ax.set_ylim(-1.0, 1.0); ax.set_aspect("equal")
     ax.axhline(0, color="brown", lw=2)
-    cart_patch = plt.Rectangle((-0.15, -0.05), 0.3, 0.1, color="steelblue")
+    cart_patch = plt.Rectangle((-0.12, -0.04), 0.24, 0.08, color="steelblue")
     ax.add_patch(cart_patch)
-    (link_line,) = ax.plot([], [], "k-", lw=3)
-    (bob,) = ax.plot([], [], "ro", ms=14)
-    title = ax.set_title("Cart-Pole Swing-Up + LQR Catch")
+    (link1_line,) = ax.plot([], [], color="#1f77b4", lw=4, marker="o", ms=7)
+    (link2_line,) = ax.plot([], [], color="#ff7f0e", lw=4, marker="o", ms=7)
+    (tip,) = ax.plot([], [], "o", ms=11)
+    title = ax.set_title("2-Link Cart-Pendulum: iLQR Swing-Up + LQR Catch")
     ax.set_xticks([]); ax.set_yticks([])
 
     def update(i):
         s = states_a[i]
-        bx, by = s[0] + l * np.sin(s[2]), l * np.cos(s[2])
-        cart_patch.set_xy((s[0] - 0.15, -0.05))
-        link_line.set_data([s[0], bx], [0, by])
-        bob.set_data([bx], [by])
-        bob.set_color("limegreen" if modes_a[i] == "LQR" else "red")
-        title.set_text(f"Cart-Pole Swing-Up + LQR Catch  |  mode: {modes_a[i]}")
-        return [cart_patch, link_line, bob, title]
+        x = s[0]; th1 = s[1]; th2 = s[2]
+        j1 = np.array([x + L1 * np.sin(th1), L1 * np.cos(th1)])
+        j2 = j1 + np.array([L2 * np.sin(th2), L2 * np.cos(th2)])
+        cart_patch.set_xy((x - 0.12, -0.04))
+        link1_line.set_data([x, j1[0]], [0, j1[1]])
+        link2_line.set_data([j1[0], j2[0]], [j1[1], j2[1]])
+        tip.set_data([j2[0]], [j2[1]])
+        tip.set_color("limegreen" if modes_a[i] == "LQR" else "red")
+        title.set_text(f"2-Link Cart-Pendulum: mode = {modes_a[i]}")
+        return [cart_patch, link1_line, link2_line, tip, title]
 
     anim = FuncAnimation(fig, update, frames=len(states_a), interval=50, blit=False)
     save(anim, "lqr_pendulum", fps=20)
 
 
-# ----- 5. Pure pursuit -----
-def anim_pure_pursuit():
-    xs_ref = np.linspace(0, 30, 400)
-    ys_ref = 3 * np.sin(xs_ref * 0.3)
-    path = np.column_stack([xs_ref, ys_ref])
-
-    x = np.array([0.0, -2.5, 0.0])
-    v, Ld, dt = 1.5, 1.8, 0.05
-    N = int(25 / dt)
-    hist = np.zeros((N, 3))
-    for i in range(N):
-        d = np.linalg.norm(path - x[:2], axis=1)
-        j = int(np.argmin(d))
-        while j < len(path) - 1 and np.linalg.norm(path[j] - x[:2]) < Ld:
-            j += 1
-        tg = path[j]
-        alpha = np.arctan2(tg[1] - x[1], tg[0] - x[0]) - x[2]
-        omega = 2 * v * np.sin(alpha) / Ld
-        x = x + dt * np.array([v * np.cos(x[2]), v * np.sin(x[2]), omega])
-        hist[i] = x
-
-    sub = 4
-    fig, ax = plt.subplots(figsize=(10, 3.5))
-    ax.plot(xs_ref, ys_ref, "b--", lw=1.5)
-    trail, = ax.plot([], [], "r-", lw=2)
-    car_dot, = ax.plot([], [], "ko", ms=10)
-    car_dir, = ax.plot([], [], "k-", lw=2)
-    ax.set_xlim(-1, 31); ax.set_ylim(-5, 5); ax.set_aspect("equal")
-    ax.set_title("Pure Pursuit Path Tracking")
-    ax.set_xticks([]); ax.set_yticks([])
-
-    def update(i):
-        end = i * sub
-        trail.set_data(hist[:end + 1, 0], hist[:end + 1, 1])
-        car_dot.set_data([hist[end, 0]], [hist[end, 1]])
-        L = 1.2
-        car_dir.set_data([hist[end, 0], hist[end, 0] + L * np.cos(hist[end, 2])],
-                         [hist[end, 1], hist[end, 1] + L * np.sin(hist[end, 2])])
-        return [trail, car_dot, car_dir]
-
-    anim = FuncAnimation(fig, update, frames=N // sub, interval=40, blit=False)
-    save(anim, "pure_pursuit", fps=20)
-
-
-# ----- 7. 2-link IK tracing circle -----
-def anim_ik():
-    l1, l2 = 1.0, 1.0
-
-    def ik(target):
-        x, y = target
-        c2 = np.clip((x * x + y * y - l1 ** 2 - l2 ** 2) / (2 * l1 * l2), -1, 1)
-        th2 = np.arccos(c2)
-        th1 = np.arctan2(y, x) - np.arctan2(l2 * np.sin(th2), l1 + l2 * np.cos(th2))
-        return th1, th2
-
-    N = 120
-    phi = np.linspace(0, 2 * np.pi, N)
-    targets = np.column_stack([1.0 + 0.4 * np.cos(phi), 0.7 + 0.4 * np.sin(phi)])
-
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.set_xlim(-0.5, 2.5); ax.set_ylim(-0.5, 2)
-    ax.set_aspect("equal")
-    ax.plot(targets[:, 0], targets[:, 1], "r--", lw=1.5, alpha=0.4)
-    arm, = ax.plot([], [], "b-o", lw=3, markersize=8)
-    tip, = ax.plot([], [], "g*", ms=14)
-    ax.plot(0, 0, "ks", ms=10)
-    ax.set_title("Inverse Kinematics: 2-link arm tracing circle")
-    ax.set_xticks([]); ax.set_yticks([])
-
-    def update(i):
-        th1, th2 = ik(targets[i])
-        p1 = np.array([l1 * np.cos(th1), l1 * np.sin(th1)])
-        p2 = p1 + np.array([l2 * np.cos(th1 + th2), l2 * np.sin(th1 + th2)])
-        arm.set_data([0, p1[0], p2[0]], [0, p1[1], p2[1]])
-        tip.set_data([p2[0]], [p2[1]])
-        return [arm, tip]
-
-    anim = FuncAnimation(fig, update, frames=N, interval=50, blit=False)
-    save(anim, "ik_2link", fps=20)
-
-
-# ----- 8. ICP alignment iteration -----
-def anim_icp():
-    np.random.seed(0)
-    t = np.linspace(0, 2 * np.pi, 120)
-    src = np.column_stack([3 * np.cos(t) + 0.5 * np.sin(3 * t),
-                            3 * np.sin(t) + 0.5 * np.cos(2 * t)])
-    true_R = np.array([[np.cos(0.5), -np.sin(0.5)], [np.sin(0.5), np.cos(0.5)]])
-    true_t = np.array([1.5, -1.0])
-    tgt = (true_R @ src.T).T + true_t + np.random.randn(*src.shape) * 0.05
-
-    snaps = [src.copy()]
-    s = src.copy()
-    for _ in range(20):
-        d = np.linalg.norm(s[:, None] - tgt[None], axis=2)
-        m = tgt[d.argmin(axis=1)]
-        sm, mm = s.mean(0), m.mean(0)
-        H = (s - sm).T @ (m - mm)
-        U, _, Vt = np.linalg.svd(H)
-        R = Vt.T @ U.T
-        if np.linalg.det(R) < 0:
-            Vt[-1] *= -1
-            R = Vt.T @ U.T
-        s = (R @ s.T).T + (mm - R @ sm)
-        snaps.append(s.copy())
-
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.scatter(tgt[:, 0], tgt[:, 1], c="r", s=15, label="Target")
-    moving = ax.scatter(snaps[0][:, 0], snaps[0][:, 1], c="b", s=15, label="Source")
-    ax.set_aspect("equal"); ax.legend()
-    title = ax.set_title("ICP Alignment — iter 0")
-    ax.set_xticks([]); ax.set_yticks([])
-
-    def update(i):
-        moving.set_offsets(snaps[i])
-        title.set_text(f"ICP Alignment — iter {i}")
-        return [moving, title]
-
-    anim = FuncAnimation(fig, update, frames=len(snaps), interval=300, blit=False)
-    save(anim, "icp_alignment", fps=4)
 
 
 # ----- 9. CBF safety filter — point robot dodging disk -----
@@ -791,11 +741,7 @@ def main():
     print(f"Generating animations in {MEDIA_DIR}")
     anim_astar()
     anim_rrt()
-    anim_pf()
     anim_pendulum()
-    anim_pure_pursuit()
-    anim_ik()
-    anim_icp()
     anim_cbf()
     anim_mpc_cartpole()
     anim_ekf_slam()

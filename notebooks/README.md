@@ -2,7 +2,7 @@
 
 First-party Python implementations of classical robotics algorithms, organized to mirror the [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) sections.
 
-Each notebook is **self-contained**: math explanation + runnable code + at least one visualization. No external data needed — synthetic inputs are generated inline. All 21 notebooks are pre-executed so GitHub renders their plots directly.
+Each notebook is **self-contained**: math explanation + runnable code + at least one visualization. No external data needed — synthetic inputs are generated inline. All 17 notebooks are pre-executed so GitHub renders their plots directly. The collection focuses on **portfolio-grade depth** — trajectory optimization (iLQR), MPC, CBF, EKF SLAM, symbolic Lagrangian dynamics — rather than introductory toy examples.
 
 ## Setup
 
@@ -18,13 +18,9 @@ jupyter notebook
 | 01 | [A* path planning](01_motion_planning_astar.ipynb) | Motion Planning | A* on a 2D occupancy grid (8-connected) |
 | 02 | [RRT](02_motion_planning_rrt.ipynb) | Motion Planning | Rapidly-exploring Random Tree with 10% goal bias |
 | 03 | [Extended Kalman Filter](03_localization_ekf.ipynb) | Localization | EKF for unicycle robot with range-bearing landmarks |
-| 04 | [Particle filter](04_localization_particle_filter.ipynb) | Localization | Monte Carlo Localization with systematic resampling |
-| 05 | [Cart-pole swing-up + LQR catch](05_motion_control_pendulum_lqr.ipynb) | Motion Control | Hybrid Astrom-Furuta energy pumping (bang-bang) from hanging, then CARE-based LQR catch in the upright sublevel set |
-| 06 | [Pure pursuit](06_path_tracking_pure_pursuit.ipynb) | Path Tracking | Geometric path tracking for a unicycle |
-| 07 | [2-link analytical IK](07_manipulation_ik_2link.ipynb) | Manipulation | Closed-form inverse kinematics for planar 2R arm |
+| 05 | [2-link cart-pendulum: iLQR swing-up + LQR catch](05_motion_control_pendulum_lqr.ipynb) | Motion Control | sympy.physics.mechanics dynamics + iLQR/DDP trajectory optimization + CARE-based LQR catch on a 6-D underactuated system |
 | 09 | [Lane detection](09_perception_lane_detection.ipynb) | Automated Driving | Canny + ROI mask + Hough lines on synthetic road |
 | 10 | [Occupancy grid](10_mapping_occupancy_grid.ipynb) | Mapping | Log-odds grid from simulated lidar scans |
-| 11 | [ICP scan matching](11_slam_icp.ipynb) | SLAM | Iterative Closest Point with SVD-based rigid transform |
 | 12 | [EKF SLAM](12_slam_ekf_slam.ipynb) | SLAM | Joint robot pose + landmark estimation |
 | 13 | [Dijkstra](13_motion_planning_dijkstra.ipynb) | Motion Planning | Shortest path on a grid (A* with zero heuristic) |
 | 14 | [Dynamic Window Approach](14_motion_planning_dwa.ipynb) | Motion Planning | Local planner sampling velocity space |

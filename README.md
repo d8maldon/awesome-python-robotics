@@ -2,7 +2,7 @@
 
 A curated list of awesome libraries, frameworks, simulators, tutorials, and overall resources for the robotics community using **Python**. Inspired by and structured after [awesome-matlab-robotics](https://github.com/mathworks-robotics/awesome-matlab-robotics) — same sections, Python ecosystem throughout.
 
-**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **22 fully runnable examples** with embedded plots covering every major application area, plus **4 interactive pygame demos** you can drive in real time.
+**This repo also ships first-party Python implementations** of the major MATLAB demos as runnable Jupyter notebooks — **17 fully runnable examples** with embedded plots covering every major application area, plus **3 interactive pygame demos** you can drive in real time. The collection is curated toward portfolio-grade depth: iLQR / DDP trajectory optimization, MPC, CBF safety filters, EKF SLAM, symbolic Lagrangian dynamics.
 
 [![Notebooks CI](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml/badge.svg)](https://github.com/d8maldon/awesome-python-robotics/actions/workflows/notebooks.yml)
 
@@ -12,52 +12,16 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). To track 1-for-1 
 
 Animated GIFs from selected notebooks — click through to the full notebook with math + code.
 
-> **⭐ Flagship notebooks**: **[05 Cart-Pole Swing-Up + LQR Catch](notebooks/05_motion_control_pendulum_lqr.ipynb)** (hybrid Astrom-Furuta energy pumping → CARE-based LQR on nonlinear dynamics, full pendulum-energy-rate derivation), **[21 MPC Cart-Pole](notebooks/21_motion_control_mpc_cartpole.ipynb)** (constrained receding-horizon QP, Mayne 2000 stability framing), and **[20 SymPy Lagrangian Pendulum](notebooks/20_modeling_symbolic_pendulum.ipynb)** (Lagrangian derivation + RK4 integration + empirical energy conservation 10⁻⁸ + elliptic-integral period validation 1.072× linear). These are the strongest "math first, code second" demonstrations in the repo.
+> **⭐ Flagship notebooks**: **[05 iLQR Swing-Up of a 2-Link Cart-Pendulum + LQR Catch](notebooks/05_motion_control_pendulum_lqr.ipynb)** (sympy.physics.mechanics → iLQR / DDP trajectory optimization on a 6-D underactuated nonlinear system → CARE-based LQR catch; the canonical research-grade swing-up problem), **[21 MPC Cart-Pole](notebooks/21_motion_control_mpc_cartpole.ipynb)** (constrained receding-horizon QP, Mayne 2000 stability framing), **[22 CBF Safety Filter](notebooks/22_motion_control_cbf_safety_filter.ipynb)** (Nagumo 1942 / Ames 2014 forward invariance, closed-form QP), and **[20 SymPy Lagrangian Pendulum](notebooks/20_modeling_symbolic_pendulum.ipynb)** (Lagrangian derivation + RK4 integration + empirical energy conservation 10⁻⁸ + elliptic-integral period validation). These are the strongest "math first, code second" demonstrations in the repo.
 
 <table>
 <tr>
 <td width="50%" align="center">
-<a href="notebooks/01_motion_planning_astar.ipynb"><img src="media/astar_expansion.gif" width="100%"/></a><br>
-<b><a href="notebooks/01_motion_planning_astar.ipynb">A* Path Planning</a></b><br>
-<sub>Cells expand outward by f = g + h; optimal path drawn at the end.</sub>
+<a href="notebooks/05_motion_control_pendulum_lqr.ipynb"><img src="media/lqr_pendulum.gif" width="100%"/></a><br>
+<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">2-Link Cart-Pendulum: iLQR Swing-Up + LQR Catch</a></b><br>
+<sub>6-D underactuated nonlinear system, 1 input. iLQR (~60 iterations) finds a 4 s cart-force trajectory that swings <em>both</em> links from hanging to upright; LQR catches and holds. Final state: both links within 1°.</sub>
 </td>
 <td width="50%" align="center">
-<a href="notebooks/02_motion_planning_rrt.ipynb"><img src="media/rrt_growth.gif" width="100%"/></a><br>
-<b><a href="notebooks/02_motion_planning_rrt.ipynb">RRT Tree Growth</a></b><br>
-<sub>Rapidly-exploring random tree with 10% goal bias finds a path through 5 obstacles.</sub>
-</td>
-</tr>
-<tr>
-<td align="center">
-<a href="notebooks/04_localization_particle_filter.ipynb"><img src="media/particle_filter.gif" width="100%"/></a><br>
-<b><a href="notebooks/04_localization_particle_filter.ipynb">Particle Filter Localization</a></b><br>
-<sub>600 particles collapse onto the true pose as range measurements arrive.</sub>
-</td>
-<td align="center">
-<a href="notebooks/05_motion_control_pendulum_lqr.ipynb"><img src="media/lqr_pendulum.gif" width="100%"/></a><br>
-<b><a href="notebooks/05_motion_control_pendulum_lqr.ipynb">Cart-Pole Swing-Up + LQR Catch</a></b><br>
-<sub>Bang-bang energy pumping (Astrom-Furuta) swings up from hanging in ~1.2 s, then LQR catches. Bob turns green when the LQR mode engages.</sub>
-</td>
-</tr>
-<tr>
-<td align="center">
-<a href="notebooks/06_path_tracking_pure_pursuit.ipynb"><img src="media/pure_pursuit.gif" width="100%"/></a><br>
-<b><a href="notebooks/06_path_tracking_pure_pursuit.ipynb">Pure Pursuit Path Tracking</a></b><br>
-<sub>Geometric controller chases a look-ahead point on a sinusoidal reference path.</sub>
-</td>
-<td align="center">
-<a href="notebooks/07_manipulation_ik_2link.ipynb"><img src="media/ik_2link.gif" width="100%"/></a><br>
-<b><a href="notebooks/07_manipulation_ik_2link.ipynb">2-Link Inverse Kinematics</a></b><br>
-<sub>Analytical IK solves for joint angles as the end-effector traces a circle.</sub>
-</td>
-</tr>
-<tr>
-<td align="center">
-<a href="notebooks/11_slam_icp.ipynb"><img src="media/icp_alignment.gif" width="100%"/></a><br>
-<b><a href="notebooks/11_slam_icp.ipynb">ICP Scan Matching</a></b><br>
-<sub>Iterative Closest Point converges the source point cloud onto the target in ~10 iterations.</sub>
-</td>
-<td align="center">
 <a href="notebooks/22_motion_control_cbf_safety_filter.ipynb"><img src="media/cbf_safety_filter.gif" width="100%"/></a><br>
 <b><a href="notebooks/22_motion_control_cbf_safety_filter.ipynb">CBF Safety Filter</a></b><br>
 <sub>Nominal P-controller (red) collides; CBF safety filter (blue) holds the forward-invariance boundary exactly. Nagumo 1942 / Ames 2014.</sub>
@@ -77,14 +41,26 @@ Animated GIFs from selected notebooks — click through to the full notebook wit
 </tr>
 <tr>
 <td align="center">
+<a href="notebooks/20_modeling_symbolic_pendulum.ipynb"><img src="media/sympy_pendulum_swing.gif" width="100%"/></a><br>
+<b><a href="notebooks/20_modeling_symbolic_pendulum.ipynb">SymPy Lagrangian Pendulum</a></b><br>
+<sub>Lagrangian-derived dynamics integrated with RK4. Empirical energy drift 1e-8 over 10 s; period matches the exact elliptic-integral solution to 0.1%.</sub>
+</td>
+<td align="center">
 <a href="notebooks/10_mapping_occupancy_grid.ipynb"><img src="media/occupancy_grid_building.gif" width="100%"/></a><br>
 <b><a href="notebooks/10_mapping_occupancy_grid.ipynb">Occupancy Grid Building</a></b><br>
 <sub>Map fills in scan-by-scan from 5 lidar poses; log-odds accumulate cell-wise evidence.</sub>
 </td>
+</tr>
+<tr>
 <td align="center">
-<a href="notebooks/20_modeling_symbolic_pendulum.ipynb"><img src="media/sympy_pendulum_swing.gif" width="100%"/></a><br>
-<b><a href="notebooks/20_modeling_symbolic_pendulum.ipynb">SymPy Pendulum</a></b><br>
-<sub>Lagrangian-derived dynamics integrated with RK4 — energy drift 1e-8 over 10s.</sub>
+<a href="notebooks/01_motion_planning_astar.ipynb"><img src="media/astar_expansion.gif" width="100%"/></a><br>
+<b><a href="notebooks/01_motion_planning_astar.ipynb">A* Path Planning</a></b><br>
+<sub>Cells expand outward by f = g + h; optimal path drawn at the end.</sub>
+</td>
+<td align="center">
+<a href="notebooks/02_motion_planning_rrt.ipynb"><img src="media/rrt_growth.gif" width="100%"/></a><br>
+<b><a href="notebooks/02_motion_planning_rrt.ipynb">RRT Tree Growth</a></b><br>
+<sub>Rapidly-exploring random tree with 10% goal bias finds a path through 5 obstacles.</sub>
 </td>
 </tr>
 </table>
@@ -114,13 +90,9 @@ jupyter notebook notebooks/
 | 01 | [A* path planning](notebooks/01_motion_planning_astar.ipynb) | Motion Planning |
 | 02 | [RRT](notebooks/02_motion_planning_rrt.ipynb) | Motion Planning |
 | 03 | [Extended Kalman Filter localization](notebooks/03_localization_ekf.ipynb) | Localization |
-| 04 | [Particle filter localization](notebooks/04_localization_particle_filter.ipynb) | Localization |
-| 05 | [Cart-pole swing-up + LQR catch](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
-| 06 | [Pure pursuit path tracking](notebooks/06_path_tracking_pure_pursuit.ipynb) | Path Tracking |
-| 07 | [2-link analytical IK](notebooks/07_manipulation_ik_2link.ipynb) | Manipulation |
+| 05 | [iLQR swing-up of a 2-link cart-pendulum + LQR catch](notebooks/05_motion_control_pendulum_lqr.ipynb) | Motion Control |
 | 09 | [Lane detection with OpenCV](notebooks/09_perception_lane_detection.ipynb) | Automated Driving |
 | 10 | [2D occupancy grid from lidar](notebooks/10_mapping_occupancy_grid.ipynb) | Mapping |
-| 11 | [ICP scan matching](notebooks/11_slam_icp.ipynb) | SLAM |
 | 12 | [EKF SLAM](notebooks/12_slam_ekf_slam.ipynb) | SLAM |
 | 13 | [Dijkstra](notebooks/13_motion_planning_dijkstra.ipynb) | Motion Planning |
 | 14 | [Dynamic Window Approach](notebooks/14_motion_planning_dwa.ipynb) | Motion Planning |
